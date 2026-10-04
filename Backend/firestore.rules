@@ -1,0 +1,52 @@
+rules_version = '2';
+
+// Plantilla de reglas de Firestore para AnimeList.
+//
+// Cada usuario solo puede leer y escribir en su propio espacio
+// `users/{userId}`. El campo `username` del claim del token debe coincidir
+// con el {userId} de la ruta; así una sesión no puede tocar la lista de otro.
+//
+// Cómo usarlo:
+//   1. Autenticar con Firebase Auth y añadir un claim custom:
+//        { uid: <authUid>, token: { username: "mi_usuario" } }
+//   2. Desplegar:  firebase deploy --only firestore:rules
+//
+// Mientras FIREBASE_ENABLED esté en false en Frontend/firebase-config.js,
+// estas reglas no aplican a nada: Flask sigue siendo la fuente de verdad.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+
+      match /anime/{animeId} {
+        allow read: if isOwner(userId);
+        allow create, update, delete: if isOwner(userId)
+                                      && validAnime(request.resource.data);
+
+        // La ficha de un anime solo puede escribirse si conserva su propietario.
+        allow update: if isOwner(userId)
+                      && request.resource.data.user == resource.data.user;
+      }
+
+      match /settings/{docId} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+
+    function isOwner(userId) {
+      return request.auth != null
+             && request.auth.token.username == userId;
+    }
+
+    function validAnime(data) {
+      return data.title is string
+             && data.title.size() > 0
+             && data.title.size() <= 200
+             && data.rating is number
+             && data.rating >= 1
+             && data.rating <= 10;
+    }
+  }
+}

@@ -1,0 +1,14 @@
+# Dependencias de produccion. `env/` se creo con pip y no se versiona, asi que
+# esta lista es la unica fuente para reconstruir el entorno (Render la usa).
+#
+# Version minima fija para que un despliegue futuro no rompa sin avisar: pip
+# respeta estos limites al resolver y falla en vez de subir la version mayor.
+flask>=3.0,<4.0
+flask-cors>=4.0,<7.0
+
+# Solo hace falta en produccion con ANIMELIST_USE_FIRESTORE=1. En local con el
+# JSON no se importa nunca (la importacion es perezosa), asi que puede quedar
+# fuera si no se va a usar Firestore.
+firebase-admin>=6.5,<8.0
+
+gunicorn>=22.0,<24.0

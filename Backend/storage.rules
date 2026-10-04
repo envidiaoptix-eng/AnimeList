@@ -1,0 +1,31 @@
+rules_version = '2';
+
+// Plantilla de reglas de Storage para las imágenes de AnimeList.
+//
+// Cualquiera puede leer (las portadas y avatares son públicos), pero solo el
+// propietario del espacio puede subir o borrar, y solo imágenes pequeñas.
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /covers/{userId}/{fileName} {
+      allow read: if true;
+      allow write: if isOwner(userId) && isImage() && request.resource.size < 5 * 1024 * 1024;
+    }
+
+    match /avatars/{userId}/{fileName} {
+      allow read: if true;
+      allow write: if isOwner(userId)
+                   && isImage()
+                   && request.resource.size < 2 * 1024 * 1024;
+    }
+
+    function isOwner(userId) {
+      return request.auth != null
+             && request.auth.token.username == userId;
+    }
+
+    function isImage() {
+      return request.resource.contentType.matches('image/.*');
+    }
+  }
+}

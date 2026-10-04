@@ -1,0 +1,21 @@
+{
+  "_comment": [
+    "Blueprint para levantar los emuladores locales de Firebase (Firestore y Storage).",
+    "Útil para probar las reglas de Backend/firestore.rules sin tocar producción:",
+    "  firebase emulators:start --only firestore,storage",
+    "y conectar el frontend con FIREBASE_EMULATOR_HUB en firebase-config.js.",
+    "No es necesario mientras Flask sea la fuente de verdad."
+  ],
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "storage": {
+    "rules": "storage.rules"
+  },
+  "emulators": {
+    "firestore": { "port": 8080 },
+    "storage": { "port": 9199 },
+    "ui": { "enabled": true },
+    "singleProjectMode": true
+  }
+}

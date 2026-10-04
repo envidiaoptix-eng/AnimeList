@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Gestiona tu lista de anime: añade, puntúa, filtra y busca portadas.">
+    <meta name="theme-color" content="#0b0b12">
+    <title>AnimeList · Mi lista</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+    <script>
+        try {
+            var saved = JSON.parse(localStorage.getItem('animelist_settings') || '{}').theme;
+            document.documentElement.dataset.theme = saved ||
+                (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+        } catch (e) { /* tema por defecto */ }
+    </script>
+</head>
+<body>
+    <a href="#contenido" class="skip-link">Saltar al contenido principal</a>
+
+    <header class="app-header">
+        <img id="profile-banner" class="app-header__banner" alt="" hidden>
+        <div class="app-shell app-header__inner">
+            <a class="brand" href="dashboard.html">
+                <span class="brand__mark" aria-hidden="true">⛩️</span>
+                <span class="brand__name">AnimeList</span>
+            </a>
+
+            <div class="app-header__user">
+                <img id="user-avatar" class="avatar" alt="" hidden>
+                <span class="app-header__greeting">Hola, <strong id="user-display">…</strong></span>
+            </div>
+
+            <div class="app-header__actions">
+                <span id="offline-badge" class="badge badge--offline" hidden>Sin conexión</span>
+                <button id="btn-theme" class="icon-btn" type="button" aria-pressed="false">
+                    <span class="theme-icon" aria-hidden="true"></span>
+                    <span class="sr-only">Cambiar tema</span>
+                </button>
+                <button id="btn-profile" class="btn btn--ghost btn--sm" type="button">Mi perfil</button>
+                <button id="btn-logout" class="btn btn--ghost btn--sm" type="button">Salir</button>
+            </div>
+        </div>
+    </header>
+
+    <main id="contenido" class="app-shell app-main">
+        <section class="stats" aria-label="Resumen de tu lista">
+            <article class="stat">
+                <span class="stat__value" id="stat-total">–</span>
+                <span class="stat__label">En tu lista</span>
+            </article>
+            <article class="stat">
+                <span class="stat__value" id="stat-completed">–</span>
+                <span class="stat__label">Completados</span>
+            </article>
+            <article class="stat">
+                <span class="stat__value" id="stat-average">–</span>
+                <span class="stat__label">Nota media</span>
+            </article>
+            <article class="stat">
+                <span class="stat__value" id="stat-episodes">–</span>
+                <span class="stat__label">Episodios</span>
+            </article>
+        </section>
+
+        <section class="panel add-panel" aria-labelledby="add-title">
+            <div class="panel__head">
+                <h2 class="panel__title" id="add-title">Añadir anime</h2>
+                <button id="btn-open-search" class="btn btn--ghost btn--sm" type="button">
+                    <span aria-hidden="true">🔍</span> Buscar en AniList
+                </button>
+            </div>
+
+            <form id="form-anime" class="form-grid" novalidate>
+                <div class="field field--cover">
+                    <span class="field__label">Portada</span>
+                    <div class="cover-preview" id="cover-preview">
+                        <span class="cover-preview__empty" aria-hidden="true">🎞️</span>
+                    </div>
+                </div>
+
+                <div class="field field--grow">
+                    <label for="anime-title">Título</label>
+                    <input id="anime-title" name="title" type="text" maxlength="200"
+                           placeholder="Ej. Shingeki no Kyojin" autocomplete="off" required>
+                    <div id="autocomplete" class="autocomplete" role="listbox" aria-label="Sugerencias" hidden></div>
+                </div>
+
+                <div class="field">
+                    <label for="anime-rating">Nota</label>
+                    <input id="anime-rating" name="rating" type="number" min="1" max="10" step="1"
+                           placeholder="8" required>
+                </div>
+
+                <div class="field">
+                    <label for="anime-status">Estado</label>
+                    <select id="anime-status" name="status">
+                        <option value="Pendiente">Pendiente</option>
+                        <option value="Viendo">Viendo</option>
+                        <option value="Completado">Completado</option>
+                        <option value="Abandonado">Abandonado</option>
+                    </select>
+                </div>
+
+                <div class="field">
+                    <label for="anime-episodes">Episodios</label>
+                    <input id="anime-episodes" name="episodes" type="text" inputmode="numeric"
+                           placeholder="?">
+                </div>
+
+                <div class="field field--wide">
+                    <label for="anime-synopsis">Sinopsis</label>
+                    <textarea id="anime-synopsis" name="synopsis" rows="3" maxlength="2000"
+                              placeholder="Se rellena sola al buscar, o escríbela tú."></textarea>
+                </div>
+
+                <div class="field field--wide form-actions">
+                    <button class="btn btn--primary" type="submit">Guardar en mi lista</button>
+                    <button class="btn btn--ghost" type="reset">Limpiar</button>
+                    <p class="form-status" id="form-status" role="status" aria-live="polite"></p>
+                </div>
+            </form>
+        </section>
+
+        <section class="list-section" aria-labelledby="list-title">
+            <div class="list-toolbar">
+                <h2 class="panel__title" id="list-title">
+                    Mi lista <span class="count" id="list-count">0</span>
+                </h2>
+
+                <div class="list-toolbar__controls">
+                    <input id="filter-text" class="input-search" type="search"
+                           placeholder="Filtrar por título…" aria-label="Filtrar por título">
+                    <label class="sr-only" for="sort-by">Ordenar por</label>
+                    <select id="sort-by" class="input-select">
+                        <option value="updated">Añadidos recientes</option>
+                        <option value="rating">Mejor puntuados</option>
+                        <option value="title">Título (A-Z)</option>
+                        <option value="episodes">Más episodios</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="chips" id="status-chips" role="group" aria-label="Filtrar por estado">
+                <button class="chip is-active" type="button" data-status="Todos" aria-pressed="true">Todos</button>
+                <button class="chip" type="button" data-status="Viendo" aria-pressed="false">Viendo</button>
+                <button class="chip" type="button" data-status="Completado" aria-pressed="false">Completados</button>
+                <button class="chip" type="button" data-status="Pendiente" aria-pressed="false">Pendientes</button>
+                <button class="chip" type="button" data-status="Abandonado" aria-pressed="false">Abandonados</button>
+            </div>
+
+            <div id="contenedor-animes" class="cards" role="list" aria-live="polite"></div>
+
+            <div id="empty-state" class="empty-state" hidden>
+                <span class="empty-state__icon" aria-hidden="true">🗂</span>
+                <p class="empty-state__title" id="empty-title">Tu lista está vacía</p>
+                <p class="empty-state__text" id="empty-text">
+                    Busca un anime arriba y pulsa “Guardar en mi lista”.
+                </p>
+            </div>
+        </section>
+    </main>
+
+    <dialog id="search-dialog" class="modal" aria-labelledby="search-dialog-title">
+        <div class="modal__head">
+            <h2 class="modal__title" id="search-dialog-title">Buscar anime</h2>
+            <button class="icon-btn" id="search-close" type="button" aria-label="Cerrar búsqueda">
+                <span aria-hidden="true">✕</span>
+            </button>
+        </div>
+
+        <div class="modal__search">
+            <input id="search-input" type="search" autocomplete="off" spellcheck="false"
+                   placeholder="Ej. Shingeki no Kyojin" aria-label="Término de búsqueda">
+            <label class="switch">
+                <input id="search-adult" type="checkbox">
+                <span>Adultos</span>
+            </label>
+        </div>
+
+        <p class="modal__status" id="search-status" role="status" aria-live="polite"></p>
+
+        <div id="search-results" class="search-results" role="listbox" aria-label="Resultados de búsqueda"></div>
+
+        <div class="modal__foot">
+            <p class="modal__hint">Flechas ↑ ↓ para moverte · Enter para elegir · Esc para cerrar</p>
+            <button id="search-more" class="btn btn--ghost btn--sm" type="button" hidden>Cargar más</button>
+        </div>
+    </dialog>
+
+    <dialog id="profile-dialog" class="modal" aria-labelledby="profile-dialog-title">
+        <form id="form-profile">
+            <div class="modal__head">
+                <h2 class="modal__title" id="profile-dialog-title">Mi perfil</h2>
+                <button class="icon-btn" id="profile-close" type="button" aria-label="Cerrar perfil">
+                    <span aria-hidden="true">✕</span>
+                </button>
+            </div>
+
+            <div class="modal__panel">
+                <div class="profile-row">
+                    <div class="profile-row__preview profile-row__preview--banner">
+                        <img id="profile-banner-preview" alt="" hidden>
+                        <span id="profile-banner-empty" class="profile-row__empty" aria-hidden="true">🖼️</span>
+                    </div>
+                    <label class="file-btn" for="profile-banner-file">
+                        <span>Cambiar banner</span>
+                        <input id="profile-banner-file" type="file" accept="image/png,image/jpeg"
+                               class="sr-only">
+                    </label>
+                    <p class="profile-row__hint">
+                        Se recorta a 1500×400. <span id="profile-banner-note" class="profile-row__pending"></span>
+                    </p>
+                    <button id="profile-banner-remove" class="btn btn--ghost btn--sm" type="button">
+                        Quitar banner
+                    </button>
+                </div>
+
+                <div class="profile-row">
+                    <div class="profile-row__preview profile-row__preview--avatar">
+                        <img id="profile-avatar" alt="" hidden>
+                        <span id="profile-avatar-empty" class="profile-row__empty" aria-hidden="true">👤</span>
+                    </div>
+                    <label class="file-btn" for="profile-avatar-file">
+                        <span>Cambiar foto</span>
+                        <input id="profile-avatar-file" type="file" accept="image/png,image/jpeg"
+                               class="sr-only">
+                    </label>
+                    <p class="profile-row__hint">
+                        Se recorta a 256×256. <span id="profile-avatar-note" class="profile-row__pending"></span>
+                    </p>
+                    <button id="profile-avatar-remove" class="btn btn--ghost btn--sm" type="button">
+                        Quitar foto
+                    </button>
+                </div>
+
+                <div class="field">
+                    <label class="field__label" for="profile-name">Nombre visible</label>
+                    <input id="profile-name" class="input" type="text" maxlength="50"
+                           autocomplete="nickname" placeholder="Cómo te ven tus amigos">
+                </div>
+
+                <p id="profile-status" class="form-status" role="status" aria-live="polite"></p>
+            </div>
+
+            <div class="modal__actions">
+                <button id="profile-cancel" class="btn btn--ghost" type="button">Cancelar</button>
+                <button class="btn btn--primary" type="submit">Guardar</button>
+            </div>
+        </form>
+    </dialog>
+
+    <script type="module" src="dashboard.js"></script>
+</body>
+</html>

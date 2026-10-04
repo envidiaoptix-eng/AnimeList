@@ -1,0 +1,32 @@
+__pycache__/
+env/
+
+# Clave de firma de los tokens: se genera sola en el primer arranque.
+# Nunca debe subirse al repositorio.
+Backend/secret.key
+
+# Datos locales de usuarios y listas
+Backend/users.json
+Backend/anime_list.json
+Backend/*.corrupto-*
+Backend/.tmp-*
+
+# Firebase (ver Backend/firestore_store.py y Frontend/firebase-config.js)
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+*.local
+
+# Cuenta de servicio de Firebase: tiene permisos de administrador sobre el
+# proyecto. NUNCA debe entrar al repositorio. En Render se pega el JSON en la
+# variable FIREBASE_CREDENTIALS desde la consola, no como fichero.
+# El * delante y detras importa: sin ellos `animelist-service-account.json` se
+# colaria, porque en .gitignore los patrones no hacen coincidencia parcial.
+*service-account*.json
+*service_account*.json
+
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

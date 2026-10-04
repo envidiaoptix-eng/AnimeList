@@ -1,0 +1,45 @@
+# Despliegue en Render (Blueprint). Se crea el servicio con:
+#     render blueprint launch
+# o desde New > Blueprint apuntando a este repositorio.
+#
+# Dos avisos sobre el plan `free`:
+#   1. El disco es efimero. En cada despliegue se borra, asi que `users.json` y
+#      `anime_list.json` NO sirven como almacen: por eso Firestore es obligatorio
+#      en produccion. Si `ANIMELIST_USE_FIRESTORE` no llegara a activarse, el
+#      sitio arrancaria vacio; se comprueba en `/api/health` -> "storage".
+#   2. El servicio se duerme a los 15 minutos sin uso y tarda unos segundos en
+#      despertar en la primera peticion. Es el tradeoff del plan gratuito.
+services:
+  - type: web
+    name: animelist
+    runtime: python
+    plan: free
+    region: oregon
+    # `wsgi.py` vive en la raiz del repo, asi que el build arranca ahi.
+    rootDir: .
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn wsgi:app --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 60
+    healthCheckPath: /api/health
+    # 2 workers con 4 hilos: el cuello de botella son las llamadas de red a
+    # AniList/Kitsu, que esperan; los hilos las solapan sin bloquear.
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.13.9"
+      # Sin esto, `secret.key` se regenera en cada arranque en frio y todos los
+      # tokens emitidos dejan de valer: el usuario tendria que entrar cada vez.
+      - key: ANIMELIST_SECRET_KEY
+        generateValue: true
+      - key: ANIMELIST_USE_FIRESTORE
+        value: "1"
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      # Este proyecto se creo desde Firebase Studio, asi que su base de datos
+      # no se llama `(default)`. Sin esto, el Admin SDK escribiria en `(default)`
+      # y el sitio no veria nada.
+      - key: FIREBASE_DATABASE_ID
+        sync: false
+      # El JSON de la cuenta de servicio pegado aqui, NO la ruta a un fichero:
+      # en Render no hay forma comoda de dejar un fichero en el contenedor.
+      # Se pega desde la consola (Environment) y Render lo cifra.
+      - key: FIREBASE_CREDENTIALS
+        sync: false
