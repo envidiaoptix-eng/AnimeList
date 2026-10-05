@@ -49,15 +49,24 @@ SECRET_KEY = _resolve_secret()
 # Duración de los tokens Bearer: 7 días
 TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60
 
-# Orígenes permitidos: file:// (Origin: null) y cualquier puerto de localhost.
-# Un origin externo (https://sitio-real.com) queda bloqueado.
+# Orígenes permitidos en CORS: file:// (Origin: null) y cualquier puerto de
+# localhost. Lo justo para el modo sin servidor y para desarrollo.
+#
+# En producción NO hace falta abrir nada: el frontend lo sirve esta misma app, de
+# modo que el navegador pide a rutas relativas y las peticiones son same-origin,
+# donde CORS ni se aplica. Por eso el dominio de Render no se lista aqui y sigue
+# sin hacer falta: añadirlo no arregla un error de CORS, y sin necesidad abriria
+# la puerta a que otra web use los tokens de un visitante.
 ALLOWED_ORIGINS = re.compile(r'^(null|https?://(localhost|127\.0\.0\.1)(:\d+)?)$')
 
 # ---- APIs externas de anime ----
 ANILIST_ENDPOINT = 'https://graphql.anilist.co'
 KITSU_ENDPOINT = 'https://kitsu.io/api/edge'
 
-USER_AGENT = 'AnimeList/1.0 (local app; +http://localhost:5000)'
+# AniList y Kitsu reciben esto. Sin URL propia: la app se sirve desde el mismo
+# origen que la API, asi que anunciar `localhost:5000` a un servicio externo
+# solo servia para que la peticion pareciera coming de un servidor local.
+USER_AGENT = 'AnimeList/1.0'
 HTTP_TIMEOUT = 6
 RETRY_ATTEMPTS = 3
 RETRY_BACKOFF_SECONDS = 0.6

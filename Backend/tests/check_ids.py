@@ -133,6 +133,24 @@ ui = leer(FRONTEND / 'ui.js')
 # asi que solo se busca como asignacion real y no como texto de documentacion.
 check('el() ya no ofrece la rama html', not re.search(r"key === 'html'", ui))
 check('el() no asigna innerHTML', 'node.innerHTML' not in ui)
+
+# La base de la API es relativa salvo en file://. Con `http://localhost:5000`
+# fijo, en Render cada peticion iba al localhost:5000 del visitante. El sintoma
+# sale como error de CORS, pero la causa es la URL, no el origen.
+api = leer(FRONTEND / 'api.js')
+# Se miran solo las lineas de codigo: los comentarios cuentan el bug de
+# `localhost:5000` a proposito, y el test no debe ensuinguirlo.
+codigo_api = '\n'.join(l for l in api.splitlines() if not l.lstrip().startswith(('*', '/', '//')))
+check('la base por defecto de la API es relativa', "RELATIVE_API_BASE = '/api'" in api)
+check('y localhost:5000 queda solo en la constante de file://',
+      codigo_api.count('http://localhost:5000') == 1
+      and 'localhost' not in '\n'.join(
+          l for l in codigo_api.splitlines() if 'FILE_API_BASE' not in l)
+      and "location.protocol === 'file:'" in api)
+check('ninguna llamada fetch lleva una IP o puerto fijo',
+      not re.search(r'fetch\(\s*[\'"]https?://', api))
+ua = [l for l in leer(BACKEND / 'config.py').splitlines() if l.startswith('USER_AGENT')]
+check('el User-Agent ya no anuncia localhost', len(ua) == 1 and 'localhost' not in ua[0], ua)
 check('el backend de Firestore sigue en su sitio', (REPO / 'Backend' / 'firestore_store.py').exists())
 check('las plantillas de reglas siguen en su sitio',
       all((REPO / 'Backend' / f).exists() for f in ('firebase.json', 'firestore.rules', 'storage.rules')))

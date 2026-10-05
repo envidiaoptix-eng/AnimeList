@@ -11,7 +11,7 @@
 
 - **Todo en uno:** `Backend/env/Scripts/python.exe Backend/app.py` → `http://localhost:5000`
   Flask sirve la API **y** el frontend, así que no hace falta ningún servidor aparte.
-- **Sin servidor:** también se puede abrir `Frontend/index.html` directamente (CORS permite `Origin: null`).
+- **Sin servidor:** también se puede abrir `Frontend/index.html` directamente (CORS permite `Origin: null`). Es el **único** caso en el que `api.js` usa la URL absoluta `http://localhost:5000/api`: en `file://` una ruta relativa se resolvería a `file:///api/...` y fallaría. En cuanto el HTML lo sirve Flask, la base es `/api` relativa.
 - Sin comandos de build, lint ni typecheck
 
 ## Arquitectura del backend

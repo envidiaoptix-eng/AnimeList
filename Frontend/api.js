@@ -3,7 +3,25 @@
  * Centraliza el token Bearer, los errores y la redirección cuando caduca la sesión.
  */
 
-const DEFAULT_API_BASE = 'http://localhost:5000/api';
+/**
+ * Base de la API: relativa, porque Flask sirve tambien el frontend.
+ *
+ * Antes era `http://localhost:5000/api` fijo, y en Render eso hacia que cada
+ * peticion del navegador fuera a `localhost:5000` del propio visitante, donde
+ * no hay nada escuchando. El fallo se ve como un error de CORS, pero no lo es:
+ * con rutas relativas todo es same-origin y la cabecera `Origin` ni se mira.
+ * Esa restriction de `ALLOWED_ORIGINS` se queda, que protege los tokens Bearer.
+ *
+ * La excepcion es `file://`, que es el unico caso en el que no hay servidor que
+ * sirva el HTML: ahi `/api/register` se resolveria a `file:///api/register` y
+ * fallaria. El navegador tendria que hablar con el backend de la otra
+ * maquina, y ahi si hace falta la URL explicita.
+ */
+const RELATIVE_API_BASE = '/api';
+const FILE_API_BASE = 'http://localhost:5000/api';
+
+const DEFAULT_API_BASE = location.protocol === 'file:' ? FILE_API_BASE : RELATIVE_API_BASE;
+
 const API_BASE_KEY = 'animelist_api_base';
 const SESSION_KEY = 'animelist_session';
 

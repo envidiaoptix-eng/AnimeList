@@ -2,6 +2,9 @@
 
 Arranque:  Backend/env/Scripts/python.exe Backend/app.py
            http://localhost:5000
+
+En producción lo sirve gunicorn (ver `wsgi.py`) en el mismo origen que el
+frontend, así que el navegador llama a rutas relativas y nunca hay CORS.
 """
 
 from pathlib import Path
