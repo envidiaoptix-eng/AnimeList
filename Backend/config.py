@@ -98,8 +98,15 @@ ANILIST_RANK_ORDER = ('highest rated all time', 'most popular all time')
 # subirlas; los topes son la red de seguridad del servidor.
 AVATAR_MAX_BYTES = 120 * 1024
 BANNER_MAX_BYTES = 400 * 1024
-MAX_UPLOAD_BYTES = 2 * 1024 * 1024
-IMAGE_KINDS = {'avatar', 'banner'}
+# El fondo ocupa la pantalla entera, asi que es bastante mas grande que un
+# banner. Es el tope sobre los bytes YA decodificados: el base64 va aparte y lo
+# cubre `MAX_UPLOAD_BYTES`.
+BACKGROUND_MAX_BYTES = 1024 * 1024
+# 3 MB y no 2: un fondo de 1 MB viaja en base64 (~1.37 MB) y con 2 MB el
+# `MAX_CONTENT_LENGTH` de Flask cortaba la peticion con un 413 antes de que
+# `_decode_image` pudiera dar un mensaje util.
+MAX_UPLOAD_BYTES = 3 * 1024 * 1024
+IMAGE_KINDS = {'avatar', 'banner', 'background'}
 
 DEBUG = os.environ.get('ANIMELIST_DEBUG', '0') == '1'
 

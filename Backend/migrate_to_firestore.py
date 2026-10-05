@@ -55,7 +55,7 @@ def main():
     print(f' origen: {len(users)} usuario(s), {len(animes)} anime(s)')
     for username in users:
         profile = users[username]
-        print(f'   - {username}: avatar={bool(profile.get("avatar_blob"))} '
+        print(f'   - {username}: avatar={bool(profile.get("avatar_blob"))} fondo={bool(profile.get("background_blob"))} '
               f'banner={bool(profile.get("banner_blob"))}')
     if animes:
         print(f'   - animes de: {sorted({a.get("user") for a in animes})}')

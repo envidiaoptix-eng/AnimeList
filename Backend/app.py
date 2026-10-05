@@ -34,8 +34,12 @@ def create_app():
     # El frontend también se sirve desde aquí, así basta con arrancar el backend.
     # send_from_directory impide salir de Frontend/ (path traversal).
     @app.get('/')
+    def landing():
+        """Portada pública. `index.html` (registro) sigue en su propia ruta."""
+        return send_from_directory(FRONTEND_DIR, 'landing.html')
+
     @app.get('/<path:filename>')
-    def frontend(filename='index.html'):
+    def frontend(filename):
         if filename.startswith('api/'):
             abort(404)
         return send_from_directory(FRONTEND_DIR, filename)

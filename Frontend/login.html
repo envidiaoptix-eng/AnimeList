@@ -4,29 +4,40 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Inicia sesión en AnimeList para gestionar tu lista de anime.">
-    <meta name="theme-color" content="#0b0b12">
+    <meta name="theme-color" content="#0a0b10">
     <title>AnimeList · Iniciar sesión</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css">
+    <link rel="preload" href="fonts/inter-var.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="css/tokens.css">
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/components.css">
+    <link rel="stylesheet" href="css/auth.css">
     <script>
         try {
             var saved = JSON.parse(localStorage.getItem('animelist_settings') || '{}').theme;
             document.documentElement.dataset.theme = saved ||
                 (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
-        } catch (e) { /* tema por defecto */ }
+        } catch (e) { /* se queda el tema por defecto */ }
     </script>
 </head>
 <body class="auth-page">
     <a href="#contenido" class="skip-link">Saltar al contenido principal</a>
 
+    <div class="theme-fab">
+        <button id="btn-theme" class="icon-btn" type="button" aria-pressed="false">
+            <i data-icon="sun" aria-hidden="true"></i>
+            <span class="sr-only">Cambiar tema</span>
+        </button>
+    </div>
+
     <main id="contenido" class="auth">
         <header class="auth__brand">
-            <span class="brand__mark" aria-hidden="true">⛩️</span>
+            <span class="brand__mark" aria-hidden="true"><i data-icon="torii"></i></span>
             <h1 class="auth__title">AnimeList</h1>
             <p class="auth__tagline">Tu lista de anime con portadas, notas y estados.</p>
         </header>
 
-        <section class="panel auth__card">
+        <section class="panel panel--pad auth__card">
             <h2 class="panel__title">Iniciar sesión</h2>
 
             <form id="form-login" class="form-stack" novalidate>
@@ -48,14 +59,12 @@
 
             <p class="auth__alt">¿No tienes cuenta? <a href="index.html">Regístrate</a></p>
         </section>
-    </main>
 
-    <div class="theme-fab">
-        <button id="btn-theme" class="icon-btn" type="button" aria-pressed="false">
-            <span class="theme-icon" aria-hidden="true"></span>
-            <span class="sr-only">Cambiar tema</span>
-        </button>
-    </div>
+        <p class="auth__foot">
+            Buscado en <a href="https://anilist.co" target="_blank" rel="noopener noreferrer">AniList</a>
+            con respaldo en <a href="https://kitsu.io" target="_blank" rel="noopener noreferrer">Kitsu</a>.
+        </p>
+    </main>
 
     <script type="module" src="app.js"></script>
 </body>

@@ -1,0 +1,653 @@
+/* =============================================================
+   AnimeList · componentes
+   Piezas reutilizables por mas de una pantalla.
+   ============================================================= */
+
+/* =============================================================
+   Marca
+   ============================================================= */
+.brand {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-3);
+    color: var(--text);
+    text-decoration: none;
+    font-weight: var(--weight-bold);
+    letter-spacing: var(--tracking-snug);
+}
+
+.brand:hover { color: var(--text); }
+
+/* El bloque de color es el logo: un torii sobre el color de marca. */
+.brand__mark {
+    display: inline-grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    flex: none;
+    border-radius: var(--radius-sm);
+    background: var(--accent);
+    color: var(--accent-ink);
+}
+
+.brand__mark .icon { width: 19px; height: 19px; }
+
+.brand__name { font-size: var(--text-md); }
+
+/* =============================================================
+   Superficies
+   ============================================================= */
+.panel {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface-1);
+    box-shadow: var(--shadow-sm);
+}
+
+.panel--pad { padding: clamp(var(--space-5), 3vw, var(--space-6)); }
+
+.panel__head {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-5);
+}
+
+.panel__title {
+    font-size: var(--text-lg);
+    font-weight: var(--weight-semibold);
+    letter-spacing: var(--tracking-snug);
+}
+
+/* =============================================================
+   Insignias
+   ============================================================= */
+.badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill);
+    background: var(--surface-2);
+    color: var(--text-muted);
+    font-size: var(--text-2xs);
+    font-weight: var(--weight-semibold);
+    letter-spacing: var(--tracking-wide);
+    white-space: nowrap;
+}
+
+/* El color de cada estado sale de los tokens, no de un selector por
+   estado: asi el mismo nombre sirve en insignia, filo y barra. */
+.badge--Pendiente { color: var(--status-pendiente); border-color: color-mix(in srgb, currentColor 35%, transparent); background: color-mix(in srgb, currentColor 12%, transparent); }
+.badge--Viendo { color: var(--status-viendo); border-color: color-mix(in srgb, currentColor 35%, transparent); background: color-mix(in srgb, currentColor 12%, transparent); }
+.badge--Completado { color: var(--status-completado); border-color: color-mix(in srgb, currentColor 35%, transparent); background: color-mix(in srgb, currentColor 12%, transparent); }
+.badge--Abandonado { color: var(--status-abandonado); border-color: color-mix(in srgb, currentColor 35%, transparent); background: color-mix(in srgb, currentColor 12%, transparent); }
+
+.badge--offline { color: var(--status-viendo); }
+.badge--pending { color: var(--accent); }
+
+/* Punto de estado: mas discreto que una insignia entera para marcar
+   la tarjeta sin robarle el sitio a la portada. */
+.status-dot {
+    width: 8px;
+    height: 8px;
+    flex: none;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.badge--dot { gap: var(--space-2); padding-inline: var(--space-3); }
+
+/* =============================================================
+   Etiquetas (generos)
+   ============================================================= */
+.tag {
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-xs);
+    background: var(--surface-3);
+    color: var(--text-muted);
+    font-size: var(--text-2xs);
+    font-weight: var(--weight-medium);
+    white-space: nowrap;
+}
+
+/* =============================================================
+   Filtros por estado
+   ============================================================= */
+.chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+}
+
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: 36px;
+    padding: var(--space-1) var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill);
+    background: transparent;
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+    cursor: pointer;
+    transition:
+        background-color var(--dur) var(--ease),
+        border-color var(--dur) var(--ease),
+        color var(--dur) var(--ease);
+}
+
+.chip:hover { border-color: var(--border-strong); color: var(--text); }
+
+.chip[aria-pressed='true'] {
+    border-color: transparent;
+    background: var(--accent);
+    color: var(--accent-ink);
+}
+
+.chip__count {
+    font-size: var(--text-2xs);
+    font-variant-numeric: tabular-nums;
+    opacity: .75;
+}
+
+/* =============================================================
+   Conmutador segmentado (vista rejilla / lista)
+   ============================================================= */
+.segmented {
+    display: inline-flex;
+    gap: 2px;
+    padding: 3px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-3);
+}
+
+.segmented__btn {
+    display: inline-grid;
+    place-items: center;
+    width: 34px;
+    height: 30px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-xs);
+    background: transparent;
+    color: var(--text-subtle);
+    cursor: pointer;
+    transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.segmented__btn:hover { color: var(--text); }
+
+.segmented__btn[aria-pressed='true'] {
+    background: var(--surface-1);
+    color: var(--text);
+    box-shadow: var(--shadow-xs);
+}
+
+/* =============================================================
+   Campo de busqueda con icono
+   ============================================================= */
+.input-search {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.input-search .icon {
+    position: absolute;
+    left: var(--space-3);
+    color: var(--text-subtle);
+    pointer-events: none;
+}
+
+.input-search input {
+    padding-left: calc(var(--space-3) * 2 + 20px);
+}
+
+.input-select { width: auto; min-width: 170px; }
+
+/* =============================================================
+   Rankings de AniList
+   ============================================================= */
+.rank-list { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+
+.rank-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 1px var(--space-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill);
+    background: var(--surface-2);
+    color: var(--text-muted);
+    font-size: var(--text-2xs);
+    line-height: 1.6;
+    cursor: help;
+}
+
+.rank-badge__num {
+    font-weight: var(--weight-bold);
+    color: var(--accent-text);
+    font-variant-numeric: tabular-nums;
+}
+
+.rank-badge__label { white-space: nowrap; }
+
+.rank-note {
+    font-size: var(--text-2xs);
+    color: var(--text-subtle);
+}
+
+/* En ficha de resultados la insignia se comprime y solo se ve el numero;
+   la etiqueta completa sigue en el `title`. */
+.rank-list--tile { gap: var(--space-1); }
+.rank-list--tile .rank-badge { padding: 1px var(--space-1); }
+
+@media (max-width: 560px) {
+    .rank-list--tile .rank-badge__label {
+        position: absolute;
+        width: 1px; height: 1px;
+        padding: 0; margin: -1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
+}
+
+/* =============================================================
+   Autocompletado
+   ============================================================= */
+.autocomplete {
+    position: absolute;
+    z-index: var(--z-popover);
+    top: calc(100% + var(--space-1));
+    left: 0;
+    width: 100%;
+    max-height: 300px;
+    overflow-y: auto;
+    padding: var(--space-1);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    background: var(--float-bg);
+    backdrop-filter: var(--blur);
+    -webkit-backdrop-filter: var(--blur);
+    box-shadow: var(--shadow-md);
+}
+
+.autocomplete__item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    width: 100%;
+    padding: var(--space-2);
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+}
+
+.autocomplete__item:hover,
+.autocomplete__item.is-active { background: var(--accent-soft); }
+
+.autocomplete__item img {
+    width: 32px;
+    height: 46px;
+    flex: none;
+    object-fit: cover;
+    border-radius: var(--radius-xs);
+    background: var(--surface-3);
+}
+
+.autocomplete__title {
+    display: block;
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
+}
+
+.autocomplete__year {
+    display: block;
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+}
+
+/* =============================================================
+   Modales
+   ============================================================= */
+.modal {
+    width: min(780px, calc(100vw - var(--space-8)));
+    max-height: min(88vh, 800px);
+    padding: 0;
+    border: 1px solid var(--float-border);
+    border-radius: var(--radius-xl);
+    background: var(--float-bg);
+    backdrop-filter: var(--blur);
+    -webkit-backdrop-filter: var(--blur);
+    color: var(--text);
+    box-shadow: var(--shadow-lg);
+    overflow: hidden;
+}
+
+.modal::backdrop {
+    background: rgba(6, 7, 12, .58);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+}
+
+.modal[open] { animation: modal-in var(--dur-slow) var(--ease-out); }
+
+@keyframes modal-in {
+    from { opacity: 0; transform: translateY(12px) scale(.985); }
+    to { opacity: 1; transform: none; }
+}
+
+.modal--confirm { width: min(420px, calc(100vw - var(--space-8))); }
+
+.modal__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    padding: var(--space-4) var(--space-5);
+    border-bottom: 1px solid var(--border);
+}
+
+.modal__title { font-size: var(--text-lg); font-weight: var(--weight-semibold); }
+.modal__panel { padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-3); }
+.modal__text { color: var(--text-muted); }
+.modal__actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
+
+.modal__search {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    align-items: center;
+    padding: var(--space-4) var(--space-5) var(--space-2);
+}
+
+.modal__search input { flex: 1 1 240px; }
+
+.modal__status {
+    min-height: 1.3em;
+    padding: var(--space-1) var(--space-5);
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+}
+
+.modal__status.is-error { color: var(--danger); }
+
+.modal__foot {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-3) var(--space-5);
+    border-top: 1px solid var(--border);
+}
+
+.modal__hint { font-size: var(--text-xs); color: var(--text-subtle); }
+
+/* =============================================================
+   Resultados de busqueda
+   ============================================================= */
+.search-results {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-5) var(--space-5);
+    overflow-y: auto;
+    max-height: 58vh;
+}
+
+.search-tile {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-1);
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+
+.search-tile:hover,
+.search-tile.is-active {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+}
+
+.search-tile img {
+    width: 100%;
+    aspect-ratio: 2 / 3;
+    object-fit: cover;
+    border-radius: var(--radius-sm);
+    background: var(--surface-3);
+}
+
+.search-tile__title {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    padding-inline: var(--space-2);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
+    line-height: 1.35;
+}
+
+.search-tile__meta {
+    padding-inline: var(--space-2);
+    font-size: var(--text-2xs);
+    color: var(--text-muted);
+}
+
+/* =============================================================
+   Portada de reserva
+   Se usa en tarjetas, resultados y formulario cuando no hay imagen.
+   ============================================================= */
+.cover-empty {
+    display: grid;
+    place-items: center;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(150deg, var(--surface-2), var(--surface-3));
+    color: var(--text-subtle);
+}
+
+.cover-empty__letter {
+    font-size: 2.4rem;
+    font-weight: var(--weight-bold);
+    letter-spacing: var(--tracking-tight);
+    opacity: .55;
+}
+
+/* =============================================================
+   Estado vacio
+   ============================================================= */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-12) var(--space-4);
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--radius-lg);
+    text-align: center;
+}
+
+.empty-state__art {
+    display: grid;
+    place-items: center;
+    width: 84px;
+    height: 84px;
+    margin-bottom: var(--space-2);
+    border-radius: var(--radius-xl);
+    background: var(--accent-soft);
+    color: var(--accent-text);
+}
+
+.empty-state__title { font-size: var(--text-lg); font-weight: var(--weight-semibold); }
+.empty-state__text { max-width: var(--reading-max); color: var(--text-muted); font-size: var(--text-base); }
+.empty-state__action { margin-top: var(--space-3); }
+
+/* =============================================================
+   Esqueleto de carga
+   ============================================================= */
+.skeleton {
+    border-radius: var(--radius-md);
+    background: linear-gradient(100deg, var(--surface-2) 30%, var(--surface-3) 50%, var(--surface-2) 70%);
+    background-size: 220% 100%;
+    animation: shimmer 1.4s linear infinite;
+}
+
+@keyframes shimmer {
+    from { background-position: 140% 0; }
+    to { background-position: -40% 0; }
+}
+
+.skeleton--card {
+    aspect-ratio: 2 / 3.4;
+    border: 1px solid var(--border);
+}
+
+/* =============================================================
+   Menú desplegable
+   ============================================================= */
+.dropdown {
+    position: relative;
+}
+
+.dropdown__panel {
+    position: absolute;
+    top: calc(100% + var(--space-2));
+    right: 0;
+    z-index: var(--z-popover);
+    min-width: 200px;
+    padding: var(--space-1);
+    border: 1px solid var(--float-border);
+    border-radius: var(--radius-md);
+    background: var(--float-bg);
+    backdrop-filter: var(--blur);
+    -webkit-backdrop-filter: var(--blur);
+    box-shadow: var(--shadow-md);
+    animation: dropdown-in var(--dur) var(--ease-out);
+}
+
+@keyframes dropdown-in {
+    from { opacity: 0; transform: translateY(-6px); }
+    to { opacity: 1; transform: none; }
+}
+
+.dropdown__head {
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid var(--border);
+    margin-bottom: var(--space-1);
+}
+
+.dropdown__name {
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
+}
+
+.dropdown__meta {
+    font-size: var(--text-2xs);
+    color: var(--text-subtle);
+    overflow-wrap: anywhere;
+}
+
+.dropdown__item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    width: 100%;
+    padding: var(--space-2) var(--space-3);
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text);
+    font-size: var(--text-base);
+    font-weight: var(--weight-medium);
+    text-align: left;
+    cursor: pointer;
+    transition: background-color var(--dur) var(--ease);
+}
+
+.dropdown__item:hover { background: var(--surface-3); }
+.dropdown__item--danger { color: var(--danger); }
+.dropdown__item--danger:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }
+
+.dropdown__sep {
+    height: 1px;
+    margin: var(--space-1) 0;
+    background: var(--border);
+}
+
+/* =============================================================
+   Avisos
+   ============================================================= */
+.toasts {
+    position: fixed;
+    right: clamp(var(--space-4), 3vw, var(--space-8));
+    bottom: clamp(var(--space-4), 3vw, var(--space-8));
+    z-index: var(--z-toast);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    max-width: min(400px, calc(100vw - var(--space-8)));
+}
+
+.toast {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--float-border);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--radius-sm);
+    background: var(--float-bg);
+    backdrop-filter: var(--blur);
+    -webkit-backdrop-filter: var(--blur);
+    box-shadow: var(--shadow-md);
+    font-size: var(--text-base);
+    animation: toast-in var(--dur-slow) var(--ease-out);
+}
+
+.toast--success { border-left-color: var(--success); }
+.toast--error { border-left-color: var(--danger); }
+.toast--info { border-left-color: var(--accent); }
+
+.toast__text { flex: 1; }
+
+.toast__action {
+    min-height: 30px;
+    padding: var(--space-1) var(--space-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xs);
+    background: transparent;
+    color: var(--accent-text);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
+    cursor: pointer;
+}
+
+.toast__action:hover { background: var(--accent-soft); }
+
+.toast.is-leaving { animation: toast-out var(--dur) var(--ease) forwards; }
+
+@keyframes toast-in {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes toast-out {
+    to { opacity: 0; transform: translateX(16px); }
+}

@@ -1,0 +1,43 @@
+# Normalizacion de fin de linea.
+#
+# El repo guarda LF y el checkout lo convierte a CRLF en Windows. Sin esto, git
+# avisa de "LF will be replaced by CRLF" en cada cambio de un .js, que es ruido
+# puro: el contenido no cambio, solo el terminador.
+* text=auto eol=lf
+
+# Los .bat y .cmd se ejecutan en Windows y no aceptan LF: cmd.exe los lee mal.
+*.bat text eol=crlf
+*.cmd  text eol=crlf
+
+# Fuentes y markups: se normalizan a LF como el resto.
+*.py   text diff=python
+*.js   text diff=javascript
+*.css  text
+*.html text
+*.json text
+*.md   text
+*.yaml text
+*.yml  text
+
+# Fuentes de iconos: SVG es texto y conviene ver el diff de un cambio.
+*.svg   text
+
+# Binarios. La fuente variable del frontend es el unico .woff2 del repo, asi
+# que marcarla como binaria evita que git intente normalizar sus bytes.
+*.woff2 binary
+*.woff  binary
+*.ttf   binary
+*.otf   binary
+*.eot   binary
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.webp  binary
+*.ico   binary
+*.pdf   binary
+
+# Generados: se ignoran en el diff de GitHub para que un cambio de SDK no
+# ensucie la revision, aunque sigan versionados.
+__pycache__/ linguist-generated=true
+env/         linguist-generated=true

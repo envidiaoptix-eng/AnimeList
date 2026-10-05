@@ -5,8 +5,10 @@
 
 import { ApiClient, ApiError } from './api.js';
 import { initThemeToggle } from './theme.js';
+import { hydrateIcons } from './icons.js';
 import { toast } from './ui.js';
 
+hydrateIcons();
 initThemeToggle(document.getElementById('btn-theme'));
 
 /** Si ya hay sesión válida, no hay nada que hacer aquí. */

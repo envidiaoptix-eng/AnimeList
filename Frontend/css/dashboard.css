@@ -1,0 +1,802 @@
+/* =============================================================
+   AnimeList · panel de usuario
+   Cabecera, resumen, formulario plegable, barra de filtros,
+   tarjetas en rejilla y en lista, y el diálogo de perfil.
+   ============================================================= */
+
+/* =============================================================
+   Cabecera
+   ============================================================= */
+.app-header {
+    position: sticky;
+    top: 0;
+    z-index: var(--z-header);
+    border-bottom: 1px solid var(--float-border);
+    background: var(--float-bg);
+    backdrop-filter: var(--blur);
+    -webkit-backdrop-filter: var(--blur);
+}
+
+/* El banner va detrás del contenido pero DELANTE del fondo: por eso la
+   cabecera pierde su fondo opaco mientras hay banner y el contenido sube
+   a z-index 2. Tres niveles: banner (0) -> velo (1) -> barra (2). */
+.app-header.has-banner {
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+.app-header__banner {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center 26%;
+    z-index: 0;
+    pointer-events: none;
+}
+
+.app-header.has-banner::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background: linear-gradient(
+        to right,
+        color-mix(in srgb, var(--float-bg) 92%, transparent),
+        color-mix(in srgb, var(--float-bg) 70%, transparent)
+    );
+}
+
+.app-header__inner {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    gap: var(--space-4);
+    align-items: center;
+    justify-content: space-between;
+    min-height: var(--header-height);
+}
+
+/* La marca vive en components.css: la usan la portada, el acceso y el panel,
+   y cada una carga un subconjunto distinto de hojas. Aqui solo esta el
+   ajuste que depende del ancho de la cabecera del panel. */
+
+.app-header__actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+/* ---------- Avatar ---------- */
+.avatar {
+    width: 34px;
+    height: 34px;
+    flex: none;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.avatar--placeholder {
+    display: grid;
+    place-items: center;
+    background: var(--accent-soft);
+    color: var(--accent-text);
+}
+
+/* Boton que hace de avatar y abre el menu de usuario. */
+.avatar-btn {
+    display: grid;
+    place-items: center;
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 50%;
+    background: transparent;
+    cursor: pointer;
+    transition: border-color var(--dur) var(--ease), background-color var(--dur) var(--ease);
+}
+
+.avatar-btn:hover { border-color: var(--border-strong); background: var(--surface-3); }
+
+/* El botón es un grid de 38px y los dos avatares miden 34px. Si los dos llegaran
+   a estar visibles, sin esto caerían en dos filas implícitas y desbordarían el
+   círculo. En la misma celda se solapan, que es lo que corresponde: solo hay un
+   avatar, lo que decide el JS es cuál de los dos nodos se ve. */
+.avatar-btn > .avatar { grid-area: 1 / 1; }
+
+/* =============================================================
+   Contenido
+   ============================================================= */
+.app-main {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-8);
+    padding-block: var(--space-6) var(--space-16);
+}
+
+.list-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    /* Anclas que no queden escondidas bajo la cabecera pegajosa. */
+    scroll-margin-top: calc(var(--header-height) + var(--space-4));
+}
+
+/* =============================================================
+   Resumen con reparto por estado
+   ============================================================= */
+.stats {
+    display: grid;
+    grid-template-columns: minmax(150px, .8fr) 2fr;
+    gap: var(--space-4);
+    align-items: stretch;
+}
+
+@media (max-width: 860px) {
+    .stats { grid-template-columns: 1fr; }
+}
+
+.stats__figures {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-4);
+    padding: var(--space-5);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface-1);
+    box-shadow: var(--shadow-sm);
+}
+
+.stat { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.stat + .stat { padding-left: var(--space-4); border-left: 1px solid var(--border); }
+
+.stat__value {
+    font-size: var(--text-2xl);
+    font-weight: var(--weight-bold);
+    letter-spacing: var(--tracking-tight);
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+}
+
+.stat__label {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+}
+
+/* ---------- Barras de reparto ---------- */
+.distribution {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: var(--space-3);
+    padding: var(--space-5);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface-1);
+    box-shadow: var(--shadow-sm);
+}
+
+.distribution__title {
+    font-size: var(--text-xs);
+    font-weight: var(--weight-semibold);
+    letter-spacing: var(--tracking-wide);
+    color: var(--text-muted);
+}
+
+.distribution__row {
+    display: grid;
+    grid-template-columns: 92px 1fr 62px;
+    gap: var(--space-3);
+    align-items: center;
+}
+
+.distribution__name {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+}
+
+.distribution__track {
+    height: 8px;
+    border-radius: var(--radius-pill);
+    background: var(--surface-3);
+    overflow: hidden;
+}
+
+.distribution__fill {
+    height: 100%;
+    border-radius: var(--radius-pill);
+    background: currentColor;
+    transform-origin: left center;
+    animation: bar-in var(--dur-slow) var(--ease-out) backwards;
+}
+
+@keyframes bar-in {
+    from { transform: scaleX(0); }
+    to { transform: scaleX(1); }
+}
+
+.distribution__value {
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 520px) {
+    .distribution__row { grid-template-columns: 74px 1fr 48px; }
+    .stats__figures { padding: var(--space-4); gap: var(--space-2); }
+    .stat + .stat { padding-left: var(--space-2); }
+}
+
+/* =============================================================
+   Formulario de añadir, plegable
+   ============================================================= */
+.disclosure { overflow: hidden; }
+
+.disclosure__trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    width: 100%;
+    padding: var(--space-4) var(--space-5);
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    font-size: var(--text-lg);
+    font-weight: var(--weight-semibold);
+    letter-spacing: var(--tracking-snug);
+    text-align: left;
+    cursor: pointer;
+    transition: background-color var(--dur) var(--ease);
+}
+
+.disclosure__trigger:hover { background: var(--surface-2); }
+
+.disclosure__trigger .icon { color: var(--text-subtle); }
+.disclosure__trigger[aria-expanded='true'] .disclosure__chevron { transform: rotate(180deg); }
+.disclosure__chevron { transition: transform var(--dur) var(--ease); }
+
+/* `hidden` ya gana gracias al `!important` de base.css, pero el alto
+   animado necesita que el elemento exista en el flujo: se anima con
+   grid-template-rows 0fr -> 1fr. */
+.disclosure__panel {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows var(--dur-slow) var(--ease);
+}
+
+.disclosure__panel.is-open { grid-template-rows: 1fr; }
+
+/* Variante plegada con `<details>` en lugar del boton con `aria-expanded`.
+   El plegado ya lo hace el navegador, asi que la animacion de alto con `0fr`
+   estorba y se anula. El disparador es un `<summary>`, que hay que limpiar del
+   triangulo por defecto de cada navegador. */
+.disclosure--native > summary { list-style: none; }
+.disclosure--native > summary::-webkit-details-marker { display: none; }
+.disclosure--native > summary .disclosure__trigger { list-style: none; }
+.disclosure--native .disclosure__panel { grid-template-rows: 1fr; transition: none; }
+.disclosure--native[open] > summary .disclosure__chevron { transform: rotate(180deg); }
+
+/* Dentro de un modal el padding de bloque del disparador deja el formulario
+   descuadrado: aqui el plegado es un extra, no la seccion principal. */
+.disclosure--compact > .disclosure__trigger {
+    padding: var(--space-2) 0;
+    font-size: var(--text-base);
+    font-weight: var(--weight-medium);
+}
+.disclosure--compact .disclosure__inner { padding-bottom: var(--space-2); }
+
+.disclosure__inner {
+    overflow: hidden;
+    min-height: 0;
+}
+
+.add-panel .form-grid { padding: 0 var(--space-5) var(--space-5); }
+
+.add-panel__head {
+    display: flex;
+    gap: var(--space-3);
+    align-items: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .disclosure__panel { transition: none; }
+}
+
+/* ---------- Vista previa de portada ---------- */
+.cover-preview {
+    display: grid;
+    place-items: center;
+    width: 100px;
+    aspect-ratio: 2 / 3;
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--surface-3);
+    overflow: hidden;
+}
+
+.cover-preview img { width: 100%; height: 100%; object-fit: cover; }
+
+.cover-preview__empty { color: var(--text-subtle); }
+
+/* =============================================================
+   Barra de la lista
+   ============================================================= */
+.list-toolbar {
+    position: sticky;
+    top: calc(var(--header-height) + 1px);
+    z-index: 20;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    align-items: center;
+    justify-content: space-between;
+    margin-inline: calc(var(--space-4) * -1);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--float-border);
+    border-radius: var(--radius-md);
+    background: var(--float-bg);
+    backdrop-filter: var(--blur);
+    -webkit-backdrop-filter: var(--blur);
+    box-shadow: var(--shadow-sm);
+}
+
+@media (min-width: 780px) {
+    .list-toolbar { margin-inline: 0; padding-inline: var(--space-2); background: transparent; border-color: transparent; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+}
+
+.list-toolbar__title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-lg);
+    font-weight: var(--weight-semibold);
+    letter-spacing: var(--tracking-snug);
+}
+
+.count {
+    padding: 1px var(--space-2);
+    border-radius: var(--radius-pill);
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-bold);
+    font-variant-numeric: tabular-nums;
+}
+
+.list-toolbar__controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    align-items: center;
+}
+
+/* =============================================================
+   Tarjetas · rejilla
+   ============================================================= */
+.cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: var(--space-4);
+}
+
+/* `content-visibility` deja de pintar lo que no se ve: en listas largas
+   el salto de scroll deja de ir a trompicones. */
+.card {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 420px;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface-1);
+    box-shadow: var(--shadow-xs);
+    overflow: hidden;
+    transition:
+        border-color var(--dur) var(--ease),
+        box-shadow var(--dur) var(--ease),
+        transform var(--dur) var(--ease);
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    border-color: var(--border-strong);
+    box-shadow: var(--shadow-md);
+}
+
+.card--editing { border-color: var(--accent); }
+
+.card__cover {
+    position: relative;
+    aspect-ratio: 2 / 3;
+    background: var(--surface-3);
+    overflow: hidden;
+}
+
+/* Filo de 3 px del color del estado: marca la tarjeta sin tapar la portada
+   con una etiqueta flotante. */
+.card__cover::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto;
+    height: 3px;
+    z-index: 2;
+    background: var(--status-color, var(--border-strong));
+}
+
+.card__cover img { width: 100%; height: 100%; object-fit: cover; }
+
+/* Oscurecido abajo para que la insignia se lea sobre cualquier portada. */
+.card__cover::after {
+    content: '';
+    position: absolute;
+    inset: 45% 0 0;
+    z-index: 1;
+    background: linear-gradient(to top, rgba(0, 0, 0, .5), transparent);
+    pointer-events: none;
+}
+
+.badge--cover {
+    position: absolute;
+    left: var(--space-2);
+    bottom: var(--space-2);
+    z-index: 2;
+}
+
+.card__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding: var(--space-3) var(--space-3) var(--space-2);
+    flex: 1;
+}
+
+.card__title {
+    font-size: var(--text-base);
+    font-weight: var(--weight-semibold);
+    line-height: 1.35;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.card__meta { font-size: var(--text-2xs); color: var(--text-muted); }
+
+.card__synopsis {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.card__genres { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-top: var(--space-1); }
+
+.card__foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3) var(--space-3);
+    border-top: 1px solid var(--border);
+}
+
+/* Grupo de la izquierda (nota + episodios). `min-width: 0` para que el
+   episodios pueda encogerse en vez de empujar los botones fuera de la
+   tarjeta cuando el título es muy largo. */
+.card__foot-left {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    min-width: 0;
+}
+
+.card__episodes {
+    font-size: var(--text-2xs);
+    color: var(--text-subtle);
+    white-space: nowrap;
+}
+
+.card__actions { display: flex; gap: var(--space-1); flex-shrink: 0; }
+
+/* ---------- Nota ---------- */
+.rating {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-size: var(--text-md);
+    font-weight: var(--weight-bold);
+    font-variant-numeric: tabular-nums;
+}
+
+/* El SVG de la estrella viene con `fill="currentColor"`, así que basta con
+   darle color. Poner también `stroke` aquí añadiría un contorno que el
+   propio icono no lleva. */
+.rating .icon { color: var(--star); }
+
+.rating__suffix { font-size: var(--text-2xs); font-weight: var(--weight-medium); color: var(--text-subtle); }
+
+.card__link {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    margin-top: var(--space-1);
+    font-size: var(--text-2xs);
+    color: var(--text-subtle);
+    text-decoration: none;
+}
+
+.card__link:hover { color: var(--accent-text); text-decoration: underline; }
+.card__link .icon { width: 13px; height: 13px; }
+
+/* ---------- Animacion de entrada ---------- */
+@keyframes card-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: none; }
+}
+
+/* El retardo lo pone `--i`, y el tope lo aplica quien genera las
+   tarjetas: mas alla de unas pocas, el escalonado se percibe como
+   retraso y no como ritmo. */
+.card--enter { animation: card-in var(--dur-slow) var(--ease-out) backwards; animation-delay: calc(var(--i, 0) * 24ms); }
+
+/* =============================================================
+   Tarjetas · lista
+   ============================================================= */
+.rows { display: flex; flex-direction: column; gap: var(--space-2); }
+
+.row {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 108px;
+    display: grid;
+    grid-template-columns: 52px 1fr auto;
+    gap: var(--space-4);
+    align-items: center;
+    padding: var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface-1);
+    box-shadow: var(--shadow-xs);
+    transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+
+.row:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
+.row--editing { grid-template-columns: 1fr; border-color: var(--accent); }
+
+.row__cover {
+    position: relative;
+    width: 52px;
+    aspect-ratio: 2 / 3;
+    border-radius: var(--radius-xs);
+    background: var(--surface-3);
+    overflow: hidden;
+}
+
+.row__cover img { width: 100%; height: 100%; object-fit: cover; }
+
+/* Punto de estado pegado a la portada. */
+.row__cover::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto;
+    height: 3px;
+    background: var(--status-color, var(--border-strong));
+}
+
+.row__main { min-width: 0; }
+
+.row__head {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    align-items: baseline;
+}
+
+.row__title {
+    font-size: var(--text-md);
+    font-weight: var(--weight-semibold);
+    letter-spacing: var(--tracking-snug);
+}
+
+.row__meta { font-size: var(--text-xs); color: var(--text-muted); }
+.row__synopsis { margin-top: var(--space-1); font-size: var(--text-sm); color: var(--text-muted); }
+.row__genres { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-top: var(--space-2); }
+
+.row__aside {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.row__link {
+    display: inline-grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-xs);
+    color: var(--text-subtle);
+}
+
+.row__link:hover { color: var(--accent-text); background: var(--accent-soft); }
+
+@media (max-width: 620px) {
+    .row { grid-template-columns: 44px 1fr; gap: var(--space-3); }
+    .row__cover { width: 44px; }
+    .row__aside { grid-column: 1 / -1; justify-content: flex-end; }
+}
+
+/* =============================================================
+   Edicion dentro de la tarjeta
+   ============================================================= */
+.card-edit {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    border-top: 1px solid var(--border);
+    background: var(--surface-2);
+}
+
+.card-edit__row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+.card-edit__actions { display: flex; gap: var(--space-2); justify-content: flex-end; }
+
+.card-edit input, .card-edit select, .card-edit textarea {
+    min-height: 38px;
+    font-size: var(--text-sm);
+}
+
+.card-edit textarea { min-height: 68px; }
+.card-edit label { font-size: var(--text-2xs); }
+
+/* =============================================================
+   Vista previa en el diálogo de perfil
+   ============================================================= */
+.profile-row {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    grid-template-areas: 'preview label remove' 'preview hint hint' 'extra extra extra';
+    align-items: center;
+    gap: var(--space-1) var(--space-3);
+    padding-bottom: var(--space-4);
+    border-bottom: 1px solid var(--border);
+}
+
+/* Antes la ultima fila de imagen se cerraba sin borde con
+   `.profile-row:last-of-type`. Al anadir la del fondo, esa regla dejo de aplicar
+   a nadie —`:last-of-type` compara con el ultimo `div` hermano, no con el ultimo
+   `.profile-row`, y ese `div` paso a ser el `.field` del nombre—. Las tres filas
+   llevan divisor ahora, y se queda a proposito: el de abajo ya no cierra el
+   bloque de imagen, sino que separa las imagenes del nombre y de la contrasena,
+   que es justo donde hacia falta un corte. */
+
+.profile-row__preview {
+    grid-area: preview;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--border-strong);
+    background: var(--surface-3);
+    overflow: hidden;
+}
+
+.profile-row__preview--banner { width: 168px; height: 46px; border-radius: var(--radius-sm); }
+.profile-row__preview--avatar { width: 56px; height: 56px; border-radius: 50%; }
+.profile-row__preview--background { width: 168px; height: 72px; border-radius: var(--radius-sm); }
+
+/* Fondo de pagina elegido en el perfil. Vive en `dashboard.css` y no en
+   `base.css` a proposito: la portada, el acceso y el login cargan `base.css` y
+   no deben heredarlo aunque `--page-bg` este puesto.
+
+   En `background-image` la PRIMERA capa es la de encima, asi que el velo va
+   primero y la foto al fondo del todo; los dos `--glow` se conservan en medio,
+   igual que sin fondo. El velo se tine con `var(--bg)`: en el tema oscuro sale
+   un oscurecido y en el claro un aclarado, que es lo que mantiene el texto
+   legible sobre cualquier foto sin taparla. Los `cover` de los extremos cubren
+   la foto con la ventana; los `auto` de los `--glow` los dejan como estaban. */
+body.has-page-bg {
+    background-image:
+        linear-gradient(
+            color-mix(in srgb, var(--bg) 70%, transparent),
+            color-mix(in srgb, var(--bg) 86%, transparent)
+        ),
+        radial-gradient(60rem 40rem at 6% -10%, var(--glow-1), transparent 60%),
+        radial-gradient(50rem 36rem at 104% 2%, var(--glow-2), transparent 58%),
+        var(--page-bg);
+    background-size: cover, auto, auto, cover;
+    background-position: center;
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+}
+.profile-row__preview img { width: 100%; height: 100%; object-fit: cover; }
+.profile-row__empty { color: var(--text-subtle); }
+
+.profile-row .file-btn { grid-area: label; justify-self: start; }
+
+/* Los plegables y la seccion de contrasena ocupan toda la fila: el `grid-area`
+   nominado las habria dejado caer en una columna que no existe. */
+.profile-row__extra { grid-area: extra; }
+.profile-extra { margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--border); }
+
+/* Boton de fichero atenuado cuando el formulario esta bloqueado. El `<input>`
+   ya no acepta nada porque esta `disabled`; esto es solo la pista visual. */
+.file-btn.is-disabled { opacity: .5; cursor: not-allowed; }
+.file-btn.is-disabled:hover { background: var(--surface-2); border-color: var(--border-strong); }
+.profile-row__hint { grid-area: hint; font-size: var(--text-xs); color: var(--text-muted); }
+.profile-row__pending { color: var(--accent-text); font-weight: var(--weight-medium); }
+.profile-row .btn--sm { grid-area: remove; }
+
+.file-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-3);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+    color: var(--text);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+    cursor: pointer;
+    transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+
+.file-btn:hover { background: var(--accent-soft); border-color: var(--accent); }
+
+@media (max-width: 520px) {
+    .profile-row { grid-template-columns: auto 1fr; grid-template-areas: 'preview label' 'preview hint' 'remove remove' 'extra extra'; }
+    .profile-row .btn--sm { grid-area: remove; justify-self: start; margin-top: var(--space-2); }
+}
+
+/* =============================================================
+   Responsive
+   ============================================================= */
+@media (max-width: 640px) {
+    .cards { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: var(--space-3); }
+    .field--cover { grid-row: auto; }
+    .form-grid { grid-template-columns: 1fr; }
+    .search-results { grid-template-columns: repeat(auto-fill, minmax(122px, 1fr)); }
+    .toasts { left: clamp(var(--space-4), 3vw, var(--space-8)); max-width: none; }
+    .brand__name { display: none; }
+}
+
+/* =============================================================
+   Dialogo de perfil: panel con scroll y pie fijo
+   =============================================================
+   Este es el unico dialogo que crece sin limite: tres filas de imagen, el nombre
+   y la contrasena. `.modal` lleva `max-height` + `overflow: hidden`, asi que sin
+   esto el final se recortaba y `.modal__actions` —donde vive Guardar— se
+   quedaba fuera de la ventana sin ninguna forma de llegar a el. Con el fondo
+   anadido el dialogo pasa de ~580 a ~729px de contenido, y el tope es 88vh: en
+   un portatil de 768p el viewport es ~650px, con 100px de sobra que se perdian.
+
+   Ahora el panel scrollea y el pie se queda quieto.
+
+   Va acotado al `id` y no a `.modal` a proposito: el dialogo de busqueda ya se
+   regula solo con el `overflow-y` de `.search-results`, y tocar `.modal` en
+   general le cambiaria el comportamiento sin motivo.
+
+   El `[open]` es obligatorio: el UA stylesheet solo oculta los `<dialog>` con
+   `dialog:not([open])`, asi que un `display` sin ese atributo los dejaria
+   visibles siempre. */
+#profile-dialog[open] { display: flex; flex-direction: column; }
+
+/* El `<form>` es el hijo que tiene que encogerse; sin `min-height: 0` un item
+   flex no baja de su altura minima de contenido y el reparto de abajo no ocurre. */
+#profile-dialog > form { display: flex; flex-direction: column; min-height: 0; }
+
+#profile-dialog .modal__panel { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+
+/* `flex: none` para que los botones no se encojan ni repartan con el scroll, y el
+   padding para que el pie respire igual que el panel: `.modal__panel` trae
+   `--space-6` y el pie no traia nada, asi que los botones quedaban pegados al
+   borde del dialogo. */
+#profile-dialog .modal__actions { flex: none; padding: 0 var(--space-6) var(--space-6); }

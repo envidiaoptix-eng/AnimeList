@@ -1,0 +1,144 @@
+"""Cruza los ids, selectores y data-icon que pide el JS con lo que hay en el HTML.
+
+Sin dependencias: `python Backend/tests/check_ids.py`. Sale con codigo 1 si algo
+no cuadra, para poder engancharlo a un hook o a CI.
+"""
+
+import io
+import re
+import sys
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[2]
+BACKEND = REPO / 'Backend'
+FRONTEND = REPO / 'Frontend'
+CSS = FRONTEND / 'css'
+
+FALLOS = []
+
+
+def check(nombre, ok, extra=''):
+    print(('  OK    ' if ok else '  FALLO ') + nombre + (('  -> ' + str(extra)) if not ok else ''))
+    if not ok:
+        FALLOS.append(nombre)
+
+
+def leer(path):
+    return io.open(path, encoding='utf-8').read()
+
+
+def ids_de_js(nombre):
+    return set(re.findall(r"getElementById\('([^']+)'\)", leer(nombre)))
+
+
+# ---------------------------------------------------------------- dashboard.html
+
+html = leer(FRONTEND / 'dashboard.html')
+ids_html = set(re.findall(r'\bid="([^"]+)"', html))
+iconos_html = set(re.findall(r'\bdata-icon="([^"]+)"', html))
+clases_html = set()
+for bloque in re.findall(r'\bclass="([^"]+)"', html):
+    clases_html.update(bloque.split())
+
+css_completo = '\n'.join(
+    leer(p) for p in (
+        CSS / 'tokens.css', CSS / 'base.css', CSS / 'components.css',
+        CSS / 'dashboard.css', CSS / 'auth.css', CSS / 'landing.css',
+    ) if p.exists()
+)
+dash_css = leer(CSS / 'dashboard.css')
+
+print('ids que pide el JS y no existen en dashboard.html')
+for nombre in ('profile.js', 'dashboard.js', 'search_modal.js'):
+    pedidos = ids_de_js(FRONTEND / nombre)
+    faltan = sorted(pedidos - ids_html)
+    check('%s: %d ids, faltan %s' % (nombre, len(pedidos), faltan or 'ninguno'), not faltan, faltan)
+
+print('querySelector del JS contra el HTML y el CSS')
+for nombre in ('profile.js', 'dashboard.js', 'search_modal.js', 'landing.js', 'app.js'):
+    selectores = set(re.findall(r"querySelector(?:All)?\('([^']+)'\)", leer(FRONTEND / nombre)))
+    faltan = []
+    for sel in selectores:
+        # Solo los id o clase simples; los compuestos se saltan por no ser
+        # comprobables con una regex.
+        clase = re.fullmatch(r'\.([A-Za-z0-9_-]+)', sel)
+        if clase and clase.group(1) not in clases_html and clase.group(1) not in css_completo:
+            faltan.append(sel)
+        id_ = re.fullmatch(r'#([A-Za-z0-9_-]+)', sel)
+        if id_ and id_.group(1) not in ids_html:
+            faltan.append(sel)
+    check('%s: faltan %s' % (nombre, faltan or 'ninguno'), not faltan, faltan)
+
+print('data-icon del HTML contra el catalogo de icons.js')
+catalogo = set(re.findall(r"^\s*'?([a-z][a-z0-9-]*)'?\s*:", leer(FRONTEND / 'icons.js'), re.M))
+faltan = sorted(iconos_html - catalogo)
+check('%d iconos en el HTML, faltan en el catalogo: %s' % (len(iconos_html), faltan or 'ninguno'),
+      not faltan, faltan)
+
+print('el fondo: nodos y reglas CSS')
+for cid in ('profile-background', 'profile-background-empty', 'profile-background-label',
+            'profile-background-file', 'profile-background-note', 'profile-background-remove',
+            'profile-background-url'):
+    check('dashboard.html tiene #' + cid, cid in ids_html)
+check('dashboard.css define .profile-row__preview--background', '.profile-row__preview--background' in dash_css)
+check('dashboard.css define body.has-page-bg', 'body.has-page-bg' in dash_css)
+check('el velo se tiñe con --bg y no con negro', 'color-mix(in srgb, var(--bg)' in dash_css)
+
+print('dashboard.js engancha el fondo')
+dash = leer(FRONTEND / 'dashboard.js')
+check('renderUser llama a paintPageBackground', 'await paintPageBackground(profile);' in dash)
+check('quita la clase cuando no hay url', "classList.remove('has-page-bg')" in dash)
+check('quita la variable cuando no hay url', "removeProperty('--page-bg')" in dash)
+check('escapa comillas en la url del css', "replace(/[\\\\\"]/g" in dash)
+check('el avatar y la inicial nunca se quedan los dos a la vez',
+      'dom.avatarFallback.hidden = Boolean(url);' in dash)
+
+print('profile.js: imagenes')
+prof = leer(FRONTEND / 'profile.js')
+check('staged.background se limpia al abrir', prof.count('staged.background = null;') >= 1)
+check('la URL del fondo se carga al abrir', "dom.backgroundUrl.value = profile?.background_url || '';" in prof)
+check('la preview del fondo se pide al abrir', "preview('background')" in prof)
+check('background_url se envia si cambia', 'fields.background_url = backgroundUrl' in prof)
+check("imageUrl usa `${kind}_url`", 'profile[`${kind}_url`]' in prof)
+check('no queda el external hardcodeado', "kind === 'avatar' ? profile.avatar_url" not in prof)
+check('el bucle de guardado suelta la cache del object URL antes de repintar',
+      'releaseUrl(kind);' in prof.split('async function')[0] or
+      'releaseUrl(kind);\n                staged[kind] = null;' in prof)
+# Sin esto, elegir dos veces el mismo archivo en la misma sesion no dispara
+# `change` porque `value` no cambia, y el boton parece muerto.
+cuerpo_pick = prof.split('const pick = async')[1].split('const removeImage')[0]
+check('pick vacia el input para poder re-elegir el mismo archivo',
+      re.search(r'(?:avatarInput|bannerInput|backgroundInput)[\s\S]{0,80}?\.value\s*=\s*\'\'', cuerpo_pick)
+      is not None, 'pick no vacia ningun input: elegir dos veces el mismo archivo no dispara change')
+
+# El blob se sirve con `no-store`: con `max-age` el navegador devolvia la copia
+# anterior y subir un avatar nuevo no se veia hasta recargar. Ya rompio una vez.
+# Se busca en las lineas que NO son comentario: el comentario que explica por que
+# esta asi nombra `max-age` a proposito, y el test no debe ensuinguirlo.
+codigo_auth = '\n'.join(
+    linea for linea in leer(BACKEND / 'routes_auth.py').splitlines()
+    if not linea.lstrip().startswith('#')
+)
+check('el blob de perfil no se cachea en el navegador',
+      "'Cache-Control': 'no-store'" in codigo_auth and 'max-age' not in codigo_auth,
+      'vuelve max-age' if 'max-age' in codigo_auth else 'falta no-store')
+
+print('codigo muerto y trampas conocidas')
+todo_js = '\n'.join(leer(p) for p in FRONTEND.glob('*.js'))
+todo_html = '\n'.join(leer(p) for p in FRONTEND.glob('*.html'))
+check('no queda Firebase en el cliente',
+      not re.search(r'Firebase|firebase|FIREBASE', todo_js + todo_html))
+ui = leer(FRONTEND / 'ui.js')
+# El comentario de cabecera nombra innerHTML para explicar por que no se usa,
+# asi que solo se busca como asignacion real y no como texto de documentacion.
+check('el() ya no ofrece la rama html', not re.search(r"key === 'html'", ui))
+check('el() no asigna innerHTML', 'node.innerHTML' not in ui)
+check('el backend de Firestore sigue en su sitio', (REPO / 'Backend' / 'firestore_store.py').exists())
+check('las plantillas de reglas siguen en su sitio',
+      all((REPO / 'Backend' / f).exists() for f in ('firebase.json', 'firestore.rules', 'storage.rules')))
+
+print()
+if FALLOS:
+    print('FALLOS (%d): %s' % (len(FALLOS), ' | '.join(FALLOS)))
+    sys.exit(1)
+print('TODO CORRECTO')

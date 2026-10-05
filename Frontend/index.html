@@ -3,31 +3,43 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Crea tu cuenta en AnimeList y Guarda tu lista de anime con portadas, notas y estados.">
-    <meta name="theme-color" content="#0b0b12">
+    <meta name="description" content="Crea tu cuenta en AnimeList y guarda tu lista de anime con portadas, notas y estados.">
+    <meta name="theme-color" content="#0a0b10">
     <title>AnimeList · Crear cuenta</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css">
+    <link rel="preload" href="fonts/inter-var.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="css/tokens.css">
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/components.css">
+    <link rel="stylesheet" href="css/auth.css">
     <script>
-        // Se aplica el tema antes de pintar para evitar el parpadeo inicial.
+        // El tema se aplica antes de pintar para que no haya parpadeo. Va
+        // en linea a proposito: un modulo bloquearia el primer dibujado.
         try {
             var saved = JSON.parse(localStorage.getItem('animelist_settings') || '{}').theme;
             document.documentElement.dataset.theme = saved ||
                 (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
-        } catch (e) { /* tema por defecto */ }
+        } catch (e) { /* se queda el tema por defecto */ }
     </script>
 </head>
 <body class="auth-page">
     <a href="#contenido" class="skip-link">Saltar al contenido principal</a>
 
+    <div class="theme-fab">
+        <button id="btn-theme" class="icon-btn" type="button" aria-pressed="false">
+            <i data-icon="sun" aria-hidden="true"></i>
+            <span class="sr-only">Cambiar tema</span>
+        </button>
+    </div>
+
     <main id="contenido" class="auth">
         <header class="auth__brand">
-            <span class="brand__mark" aria-hidden="true">⛩️</span>
+            <span class="brand__mark" aria-hidden="true"><i data-icon="torii"></i></span>
             <h1 class="auth__title">AnimeList</h1>
             <p class="auth__tagline">Tu lista de anime con portadas, notas y estados.</p>
         </header>
 
-        <section class="panel auth__card">
+        <section class="panel panel--pad auth__card">
             <h2 class="panel__title">Crear cuenta</h2>
 
             <form id="form-registro" class="form-stack" novalidate>
@@ -57,14 +69,12 @@
 
             <p class="auth__alt">¿Ya tienes cuenta? <a href="login.html">Inicia sesión</a></p>
         </section>
-    </main>
 
-    <div class="theme-fab">
-        <button id="btn-theme" class="icon-btn" type="button" aria-pressed="false">
-            <span class="theme-icon" aria-hidden="true"></span>
-            <span class="sr-only">Cambiar tema</span>
-        </button>
-    </div>
+        <p class="auth__foot">
+            Buscado en <a href="https://anilist.co" target="_blank" rel="noopener noreferrer">AniList</a>
+            con respaldo en <a href="https://kitsu.io" target="_blank" rel="noopener noreferrer">Kitsu</a>.
+        </p>
+    </main>
 
     <script type="module" src="app.js"></script>
 </body>

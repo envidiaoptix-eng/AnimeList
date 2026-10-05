@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="AnimeList es un gestor de listas de anime: añade títulos con portada, puntúa de 1 a 10 y filtra por estado. Tus datos, tu navegador, tu servidor.">
+    <meta name="theme-color" content="#0a0b10">
+    <meta property="og:title" content="AnimeList · Tu lista de anime">
+    <meta property="og:description" content="Añade, puntúa y filtra anime con portada y sinopsis. Gratis y autoalojado.">
+    <meta property="og:type" content="website">
+    <title>AnimeList · Tu lista de anime, en orden</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="preload" href="fonts/inter-var.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="css/tokens.css">
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/components.css">
+    <link rel="stylesheet" href="css/landing.css">
+    <script>
+        // Igual que en el resto de páginas: el tema se fija antes del primer
+        // dibujado para que no haya un destello claro en una pantalla oscura.
+        try {
+            var saved = JSON.parse(localStorage.getItem('animelist_settings') || '{}').theme;
+            document.documentElement.dataset.theme = saved ||
+                (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+        } catch (e) { /* se queda el tema por defecto */ }
+    </script>
+</head>
+<body class="landing">
+    <a href="#contenido" class="skip-link">Saltar al contenido principal</a>
+
+    <header class="landing-nav" id="landing-nav">
+        <div class="app-shell landing-nav__inner">
+            <a class="brand" href="landing.html">
+                <span class="brand__mark" aria-hidden="true"><i data-icon="torii"></i></span>
+                <span class="brand__name">AnimeList</span>
+            </a>
+
+            <nav class="landing-nav__links" aria-label="Secciones">
+                <a href="#como-funciona">Cómo funciona</a>
+                <a href="#caracteristicas">Características</a>
+            </nav>
+
+            <div class="landing-nav__actions">
+                <button id="btn-theme" class="icon-btn" type="button" aria-pressed="false">
+                    <i data-icon="sun" aria-hidden="true"></i>
+                    <span class="sr-only">Cambiar tema</span>
+                </button>
+                <a class="btn btn--ghost btn--sm" href="login.html">Entrar</a>
+                <a class="btn btn--primary btn--sm" href="index.html">Crear cuenta</a>
+            </div>
+        </div>
+    </header>
+
+    <main id="contenido">
+        <!-- ---------- Portada ---------- -->
+        <section class="hero">
+            <div class="app-shell hero__inner">
+                <div class="hero__copy">
+                    <p class="hero__eyebrow">
+                        <i data-icon="sparkles" class="icon--sm"></i>
+                        Buscador con AniList y Kitsu
+                    </p>
+                    <h1 class="hero__title">
+                        Tu lista de anime,<br>
+                        <span class="hero__title-accent">en orden y con nota</span>
+                    </h1>
+                    <p class="hero__lead">
+                        Añade títulos con su portada y sinopsis, puntúa de 1 a 10 y
+                        filtra por estado. Sin anuncios, sin cuentas ajenas: es tu
+                        servidor y tus datos.
+                    </p>
+                    <div class="hero__actions">
+                        <a class="btn btn--primary btn--lg" href="index.html">
+                            <i data-icon="user-plus" class="icon--sm"></i> Crear mi lista gratis
+                        </a>
+                        <a class="btn btn--ghost btn--lg" href="login.html">Ya tengo cuenta</a>
+                    </div>
+                    <ul class="hero__points">
+                        <li><i data-icon="check" class="icon--sm"></i> Sin tarjeta ni registro de pago</li>
+                        <li><i data-icon="check" class="icon--sm"></i> Sigue funcionando sin conexión</li>
+                        <li><i data-icon="check" class="icon--sm"></i> Tus datos en Firestore o en tu disco</li>
+                    </ul>
+                </div>
+
+                <!-- Maqueta estática: no pide datos al backend ni necesita token. -->
+                <div class="hero__preview" aria-hidden="true">
+                    <div class="mock">
+                        <div class="mock__bar">
+                            <span class="mock__dot"></span>
+                            <span class="mock__dot"></span>
+                            <span class="mock__dot"></span>
+                            <span class="mock__url">animelist · mi lista</span>
+                        </div>
+
+                        <div class="mock__body">
+                            <div class="mock__figures">
+                                <div><b>48</b><span>En tu lista</span></div>
+                                <div><b>31</b><span>Completados</span></div>
+                                <div><b>8,4</b><span>Nota media</span></div>
+                            </div>
+
+                            <div class="mock__cards">
+                                <div class="mock__card">
+                                    <div class="mock__cover mock__cover--a"></div>
+                                    <p class="mock__title">Cowboy Bebop</p>
+                                    <span class="mock__meta">Completado · 26 ep</span>
+                                </div>
+                                <div class="mock__card">
+                                    <div class="mock__cover mock__cover--b"></div>
+                                    <p class="mock__title">Shingeki no Kyojin</p>
+                                    <span class="mock__meta">Viendo · 9,5</span>
+                                </div>
+                                <div class="mock__card">
+                                    <div class="mock__cover mock__cover--c"></div>
+                                    <p class="mock__title">Mushishi</p>
+                                    <span class="mock__meta">Completado · 10</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ---------- Cómo funciona ---------- -->
+        <section class="section" id="como-funciona" aria-labelledby="como-title">
+            <div class="app-shell">
+                <header class="section__head">
+                    <p class="section__eyebrow">Cómo funciona</p>
+                    <h2 class="section__title" id="como-title">Tres pasos y ya tienes la lista</h2>
+                    <p class="section__lead">
+                        El buscador llama a AniList y, si no responde, a Kitsu.
+                        Tú solo eliges el título correcto.
+                    </p>
+                </header>
+
+                <ol class="steps">
+                    <li class="step">
+                        <span class="step__num" aria-hidden="true">1</span>
+                        <h3 class="step__title">Crea tu usuario</h3>
+                        <p class="step__text">
+                            Un alias y una contraseña. Tu lista es privada: solo la
+                            ven tus sesiones.
+                        </p>
+                    </li>
+                    <li class="step">
+                        <span class="step__num" aria-hidden="true">2</span>
+                        <h3 class="step__title">Busca y añade</h3>
+                        <p class="step__text">
+                            Escribe el título y elige entre los resultados. Se
+                            copian portada, sinopsis, episodios y año.
+                        </p>
+                    </li>
+                    <li class="step">
+                        <span class="step__num" aria-hidden="true">3</span>
+                        <h3 class="step__title">Puntúa y filtra</h3>
+                        <p class="step__text">
+                            Nota de 1 a 10 y estado: pendiente, viendo, completado
+                            o abandonado. Las estadísticas se actualizan solas.
+                        </p>
+                    </li>
+                </ol>
+            </div>
+        </section>
+
+        <!-- ---------- Características ---------- -->
+        <section class="section section--alt" id="caracteristicas" aria-labelledby="features-title">
+            <div class="app-shell">
+                <header class="section__head">
+                    <p class="section__eyebrow">Características</p>
+                    <h2 class="section__title" id="features-title">Todo lo que hace falta, nada sobra</h2>
+                </header>
+
+                <div class="features">
+                    <article class="feature">
+                        <span class="feature__icon"><i data-icon="search"></i></span>
+                        <h3 class="feature__title">Buscador con dos fuentes</h3>
+                        <p class="feature__text">
+                            AniList como principal y Kitsu como respaldo. Con
+                            reintentos y caché, así que repetir una búsqueda no
+                            vuelve a llamar a la red.
+                        </p>
+                    </article>
+
+                    <article class="feature">
+                        <span class="feature__icon"><i data-icon="layout-grid"></i></span>
+                        <h3 class="feature__title">Rejilla o lista</h3>
+                        <p class="feature__text">
+                            Cambia de vista cuando quieras. El filtro de texto y el
+                            orden se recuerdan al recargar.
+                        </p>
+                    </article>
+
+                    <article class="feature">
+                        <span class="feature__icon"><i data-icon="bar-chart"></i></span>
+                        <h3 class="feature__title">Estadísticas al día</h3>
+                        <p class="feature__text">
+                            Total, completados, nota media, episodios y el reparto
+                            por estado, calculados en el servidor.
+                        </p>
+                    </article>
+
+                    <article class="feature">
+                        <span class="feature__icon"><i data-icon="wifi-off"></i></span>
+                        <h3 class="feature__title">Funciona sin conexión</h3>
+                        <p class="feature__text">
+                            Las fichas se guardan en el navegador y lo que añades
+                            sin red entra en una cola que se aplica al volver.
+                        </p>
+                    </article>
+
+                    <article class="feature">
+                        <span class="feature__icon"><i data-icon="image"></i></span>
+                        <h3 class="feature__title">Avatar, banner y fondo</h3>
+                        <p class="feature__text">
+                            Se recortan a 256×256, 1500×400 y 1920×1080 en el
+                            navegador. Los bytes se guardan en tu backend, nunca
+                            en un tercero.
+                        </p>
+                    </article>
+
+                    <article class="feature">
+                        <span class="feature__icon"><i data-icon="shield"></i></span>
+                        <h3 class="feature__title">Acceso por token</h3>
+                        <p class="feature__text">
+                            Firmado con HMAC-SHA256 y con caducidad de siete días.
+                            Cada anime se valida contra su propietario.
+                        </p>
+                    </article>
+                </div>
+            </div>
+        </section>
+
+        <!-- ---------- Cierre ---------- -->
+        <section class="section cta">
+            <div class="app-shell cta__inner">
+                <h2 class="cta__title">Empieza tu lista en un minuto</h2>
+                <p class="cta__text">
+                    Abre AniList en la otra pestaña, copia el título y ya sabes
+                    para qué sirve esto.
+                </p>
+                <div class="cta__actions">
+                    <a class="btn btn--primary btn--lg" href="index.html">Crear mi cuenta</a>
+                    <a class="btn btn--ghost btn--lg" href="login.html">Iniciar sesión</a>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="landing-foot">
+        <div class="app-shell landing-foot__inner">
+            <p>
+                Datos de <a href="https://anilist.co" target="_blank" rel="noopener noreferrer">AniList</a>
+                con respaldo en <a href="https://kitsu.io" target="_blank" rel="noopener noreferrer">Kitsu</a>.
+            </p>
+            <p class="landing-foot__meta">AnimeList · Flask + módulos ES, sin build</p>
+        </div>
+    </footer>
+
+    <script type="module" src="landing.js"></script>
+</body>
+</html>

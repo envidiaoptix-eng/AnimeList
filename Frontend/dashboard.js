@@ -7,7 +7,8 @@ import { ApiClient } from './api.js';
 import { DataRepository } from './data_repository.js';
 import { Settings, watchConnection } from './storage.js';
 import { initThemeToggle } from './theme.js';
-import { confirmDialog, el, fallbackMeta, formatMeta, rankBadges, toast } from './ui.js';
+import { icon, hydrateIcons } from './icons.js';
+import { confirmDialog, debounce, el, fallbackMeta, formatMeta, rankBadges, toast } from './ui.js';
 import { initSearchModal, initAutocomplete } from './search_modal.js';
 import {
     initProfileDialog,
@@ -25,14 +26,44 @@ const username = session?.username ?? '';
 
 const STATUSES = ['Pendiente', 'Viendo', 'Completado', 'Abandonado'];
 
+/* El color del filo de la tarjeta sale de una variable CSS en vez de cuatro
+   clases: el mismo estado aparece en la insignia, en la barra de reparto y en
+   el borde, y así los tres leen siempre del mismo token. */
+const STATUS_VAR = {
+    Pendiente: '--status-pendiente',
+    Viendo: '--status-viendo',
+    Completado: '--status-completado',
+    Abandonado: '--status-abandonado',
+};
+
+/* Cuántas tarjetas se animan al entrar. Más allá de esto el escalonado se
+   percibe como retardo, no como ritmo. */
+const ENTER_STAGGER_LIMIT = 12;
+
+/* Nº de esqueletos durante la carga. */
+const SKELETON_COUNT = 8;
+
+/* La cascada de entrada solo tiene sentido en la primera pintada: a partir de
+   ahí se apaga para que filtrar y ordenar no parezcan un parpadeo. */
+let animateEnter = true;
+
 const dom = {
-    display: document.getElementById('user-display'),
     avatar: document.getElementById('user-avatar'),
+    avatarFallback: document.getElementById('avatar-fallback'),
+    menuName: document.getElementById('menu-name'),
+    menuUsername: document.getElementById('menu-username'),
+    userButton: document.getElementById('btn-user'),
+    userMenu: document.getElementById('user-menu-panel'),
     offline: document.getElementById('offline-badge'),
+    offlineText: document.getElementById('offline-text'),
     logout: document.getElementById('btn-logout'),
     header: document.querySelector('.app-header'),
     banner: document.getElementById('profile-banner'),
 
+    addPanel: document.getElementById('add-panel'),
+    addToggle: document.getElementById('add-toggle'),
+    addBody: document.getElementById('add-body'),
+    addBodyInner: document.getElementById('add-body-inner'),
     form: document.getElementById('form-anime'),
     title: document.getElementById('anime-title'),
     rating: document.getElementById('anime-rating'),
@@ -48,15 +79,20 @@ const dom = {
     completed: document.getElementById('stat-completed'),
     average: document.getElementById('stat-average'),
     episodesStat: document.getElementById('stat-episodes'),
+    distribution: document.getElementById('distribution-rows'),
 
     chips: document.getElementById('status-chips'),
     filterText: document.getElementById('filter-text'),
     sortBy: document.getElementById('sort-by'),
+    viewSwitch: document.getElementById('view-switch'),
     listCount: document.getElementById('list-count'),
     grid: document.getElementById('contenedor-animes'),
+    listStatus: document.getElementById('list-status'),
     empty: document.getElementById('empty-state'),
     emptyTitle: document.getElementById('empty-title'),
     emptyText: document.getElementById('empty-text'),
+    emptyAction: document.getElementById('empty-action'),
+    export: document.getElementById('btn-export'),
 };
 
 const state = {
@@ -65,7 +101,8 @@ const state = {
     editingId: null,
     statusFilter: Settings.get('statusFilter'),
     sortBy: Settings.get('sortBy'),
-    textFilter: '',
+    viewMode: Settings.get('viewMode'),
+    textFilter: Settings.get('textFilter') || '',
     /** Metadatos de la ficha elegida en el buscador, para el próximo alta. */
     picked: {},
 };
@@ -81,48 +118,80 @@ const searchModal = initSearchModal({ onPick: fillForm });
  *
  * Se relanza tras cada cambio del perfil, así que se apoya solo en
  * `session.profile` en lugar de guardar una copia aparte.
+ *
+ * El `<img>` y la inicial de reserva son los mismos dos nodos siempre, y solo
+ * cambia cuál se ve. Antes se sustituían entre sí, lo que obligaba a
+ * rebuscar el elemento en cada repintado y a vigilar que el sustituto
+ * estuviera en el DOM.
  */
 async function renderUser() {
     const profile = session.profile;
     const name = profile?.display_name || username;
+    const initial = name.trim().charAt(0).toUpperCase() || '?';
 
-    dom.display.textContent = name;
+    dom.menuName.textContent = name;
+    dom.menuUsername.textContent = `@${username}`;
+    dom.avatarFallback.textContent = initial;
 
     await paintBanner(profile);
+    await paintPageBackground(profile);
 
-    // Si antes se pintó el marcador de inicial y ahora hay foto, el `<span>` que
-    // sustituyó al `<img>` sigue en el DOM: hay que volver al elemento real.
-    if (!dom.avatar.isConnected || dom.avatar.tagName !== 'IMG') {
-        const nuevo = document.createElement('img');
-        nuevo.id = 'user-avatar';
-        nuevo.className = 'avatar';
-        dom.avatar.replaceWith(nuevo);
-        dom.avatar = nuevo;
-    }
-
-    dom.avatar.alt = '';
-    dom.avatar.removeAttribute('src');
-    dom.avatar.hidden = true;
-
+    // El `<img>` y la inicial son los mismos dos nodos de siempre, y solo cambia
+    // cuál se ve. `#avatar-fallback` no se ocultaba en ningún sitio, así que con
+    // foto los dos acababan visibles dentro del botón de 38px: al no haber
+    // `grid-template` caían en dos filas implícitas y desbordaban el círculo.
+    let url = '';
     try {
-        const url = await profileImageUrl('avatar', profile);
-        if (url) {
-            dom.avatar.src = url;
-            dom.avatar.alt = `Foto de ${name}`;
-            dom.avatar.hidden = false;
-            return;
-        }
+        url = await profileImageUrl('avatar', profile);
     } catch {
-        // Si la imagen no se puede pedir, se muestra el marcador de inicial.
+        // Si la imagen no se puede pedir, se muestra la inicial de reserva.
+        url = '';
     }
 
-    const placeholder = el('span', {
-        class: 'avatar avatar--placeholder',
-        'aria-hidden': 'true',
-        text: name.trim().charAt(0).toUpperCase() || '?',
-    });
-    dom.avatar.replaceWith(placeholder);
-    dom.avatar = placeholder;
+    dom.avatarFallback.hidden = Boolean(url);
+
+    if (url) {
+        dom.avatar.src = url;
+        dom.avatar.alt = `Foto de ${name}`;
+        dom.avatar.hidden = false;
+    } else {
+        dom.avatar.hidden = true;
+        dom.avatar.removeAttribute('src');
+    }
+}
+
+/**
+ * Envuelve una URL en `url("...")`. Las comillas y la barra invertida se
+ * escapan porque `background-image` no entiende de JSON: una URL con una comilla
+ * sin escapar rompe la regla entera y el `body` se queda sin fondo del todo.
+ */
+const cssUrl = (value) => `"${value.replace(/[\\"]/g, '\\$&')}"`;
+
+/**
+ * Pinta el fondo de pagina del usuario.
+ *
+ * Va como variable en `:root` en vez de como `background-image` directo para no
+ * tocar la regla de `body` de `base.css`, que comparten la portada, el acceso y
+ * el login. La clase `has-page-bg` es la que activa el velo, y solo la define
+ * `dashboard.css`, asi que esas paginas no lo heredan ni aunque la variable
+ * llegara a estar puesta.
+ */
+async function paintPageBackground(profile) {
+    let url = '';
+    try {
+        url = await profileImageUrl('background', profile);
+    } catch {
+        // Sin el fichero no hay objeto que pintar: se deja el fondo del tema.
+        url = '';
+    }
+
+    if (url) {
+        document.documentElement.style.setProperty('--page-bg', `url(${cssUrl(url)})`);
+        document.body.classList.add('has-page-bg');
+    } else {
+        document.documentElement.style.removeProperty('--page-bg');
+        document.body.classList.remove('has-page-bg');
+    }
 }
 
 async function paintBanner(profile) {
@@ -149,11 +218,9 @@ function setOffline(isOffline) {
     dom.offline.hidden = !isOffline;
 
     const queued = DataRepository.queueSize(username);
-    if (isOffline && queued > 0) {
-        dom.offline.textContent = `Sin conexión · ${queued} pendiente${queued === 1 ? '' : 's'}`;
-    } else {
-        dom.offline.textContent = 'Sin conexión';
-    }
+    dom.offlineText.textContent = isOffline && queued > 0
+        ? `Sin conexión · ${queued} pendiente${queued === 1 ? '' : 's'}`
+        : 'Sin conexión';
 }
 
 /**
@@ -171,7 +238,7 @@ function refreshPending() {
 
 async function load() {
     dom.grid.replaceChildren(
-        ...Array.from({ length: 8 }, () => el('div', { class: 'skeleton skeleton--card' })),
+        ...Array.from({ length: SKELETON_COUNT }, () => el('div', { class: 'skeleton skeleton--card' })),
     );
 
     try {
@@ -187,13 +254,103 @@ async function load() {
 
 /** Vuelca la cola offline y recarga si había algo pendiente. */
 async function syncQueue() {
-    const { synced } = await DataRepository.flushQueue(username);
+    const { synced, touchedProfile } = await DataRepository.flushQueue(username);
     if (!synced) return;
 
     state.all = await DataRepository.getAnimes(username);
     applyView();
     renderStats();
+
+    // La cola también puede llevar el nombre visible. Si salió, la cabecera
+    // sigue enseñando el viejo hasta que se recargue la página.
+    if (touchedProfile) {
+        session.profile = await ApiClient.getProfile().catch(() => session.profile);
+        await renderUser();
+    }
+
     toast(`${synced} cambio${synced === 1 ? '' : 's'} sincronizado${synced === 1 ? '' : 's'}.`, {
+        type: 'success',
+    });
+}
+
+/* ---------------------------------------------------------------- */
+/* Exportar                                                        */
+/* ---------------------------------------------------------------- */
+
+/** Campos del CSV, en orden. Los que no existan en un anime salen vacíos. */
+const EXPORT_COLUMNS = [
+    'title',
+    'title_native',
+    'title_english',
+    'status',
+    'rating',
+    'episodes',
+    'format',
+    'year',
+    'genres',
+    'synopsis',
+];
+
+/**
+ * Escapa una celda de CSV.
+ *
+ * El separador es `;` y no `,` porque en configuración española la coma es el
+ * separador decimal: con `,` Excel abriría las columnas donde toca. Entre
+ * comillas van el separador, las comillas y los saltos de línea.
+ */
+function csvCell(value) {
+    if (Array.isArray(value)) value = value.join(', ');
+    const text = value === null || value === undefined ? '' : String(value);
+    return /[";\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+/**
+ * Dispara la descarga de un texto como fichero.
+ *
+ * El object URL se revoca en un `setTimeout` y no de inmediato: al revocarlo en
+ * el mismo turno, algunos navegadores recortan la descarga a cero bytes.
+ */
+function download(filename, mime, content) {
+    const url = URL.createObjectURL(new Blob([content], { type: mime }));
+    const link = el('a', { href: url, download: filename });
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function stamp() {
+    return new Date().toISOString().slice(0, 10);
+}
+
+/**
+ * Exporta la lista completa.
+ *
+ * Se lee de `state.all` y no de la lista ya filtrada: al exportar se espera la
+ * lista entera, no lo que haya en pantalla en ese momento. Se recurre al
+ * repositorio si todavía no se ha cargado nada.
+ */
+async function exportList(format) {
+    const list = state.all.length ? state.all : await DataRepository.getAnimes(username);
+
+    if (!list.length) {
+        toast('Tu lista está vacía: no hay nada que exportar.', { type: 'info' });
+        return;
+    }
+
+    const base = `animelist-${username}-${stamp()}`;
+
+    if (format === 'json') {
+        download(`${base}.json`, 'application/json;charset=utf-8', JSON.stringify(list, null, 2));
+    } else {
+        const rows = list.map((anime) => EXPORT_COLUMNS.map((key) => csvCell(anime[key])).join(';'));
+        // BOM UTF-8: sin él, Excel en español abre los acentos como caracteres
+        // raros, porque la hoja asume la codificación local.
+        download(`${base}.csv`, 'text/csv;charset=utf-8', `\uFEFF${EXPORT_COLUMNS.join(';')}\r\n${rows.join('\r\n')}\r\n`);
+    }
+
+    const pending = list.filter((anime) => anime.pending).length;
+    toast(`Exportados ${list.length} anime.` + (pending ? ` ${pending} aún sin sincronizar.` : ''), {
         type: 'success',
     });
 }
@@ -223,6 +380,13 @@ function visible() {
     return [...filtered].sort(sorters[state.sortBy] || sorters.updated);
 }
 
+/**
+ * Resumen: cuatro cifras y el reparto por estado.
+ *
+ * Todo se calcula en el cliente sobre `state.all`. El backend tiene
+ * `/api/stats`, pero consultarlo sería una segunda fuente de verdad para los
+ * mismos números, y aquí ya están en memoria.
+ */
 function renderStats() {
     const ratings = state.all.map((anime) => anime.rating).filter((value) => typeof value === 'number');
     const episodes = state.all.reduce(
@@ -236,19 +400,55 @@ function renderStats() {
         ? (ratings.reduce((sum, value) => sum + value, 0) / ratings.length).toFixed(1)
         : '–';
     dom.episodesStat.textContent = episodes || '–';
+
+    renderDistribution();
+}
+
+/**
+ * Una barra por estado, con la proporción sobre el total.
+ *
+ * El relleno lleva `--i` para que las barras crezcan en cascada; la animación
+ * se reinicia en cada repintado, así que reordenar no las deja a medias.
+ */
+function renderDistribution() {
+    const total = state.all.length;
+
+    const rows = STATUSES.map((status, index) => {
+        const count = state.all.filter((anime) => anime.status === status).length;
+        const share = total ? Math.round((count / total) * 100) : 0;
+
+        return el('div', { class: 'distribution__row' },
+            el('span', { class: 'distribution__name' },
+                el('span', { class: 'status-dot', style: `color: var(${STATUS_VAR[status]})`, 'aria-hidden': 'true' }),
+                el('span', { text: status }),
+            ),
+            el('span', {
+                class: 'distribution__track',
+                role: 'img',
+                'aria-label': `${status}: ${count} de ${total}`,
+            },
+            el('span', {
+                class: 'distribution__fill',
+                style: `width: ${share}%; color: var(${STATUS_VAR[status]}); animation-delay: ${index * 60}ms`,
+            })),
+            el('span', { class: 'distribution__value', text: `${count}` }),
+        );
+    });
+
+    dom.distribution.replaceChildren(...rows);
 }
 
 /* ---------------------------------------------------------------- */
 /* Tarjetas                                                         */
 /* ---------------------------------------------------------------- */
 
+/** Portada de la ficha, o su inicial si AniList y Kitsu no trajeron imagen. */
 function coverNode(anime) {
     const title = anime.title || '?';
     const fallback = () => el('div', {
-        class: 'card__cover--empty',
+        class: 'cover-empty',
         'aria-hidden': 'true',
-        text: title.charAt(0),
-    });
+    }, el('span', { class: 'cover-empty__letter', text: title.charAt(0) }));
 
     if (!anime.cover_url) return fallback();
 
@@ -256,8 +456,43 @@ function coverNode(anime) {
         src: anime.cover_url,
         alt: `Portada de ${title}`,
         loading: 'lazy',
+        decoding: 'async',
         onError: (event) => event.target.replaceWith(fallback()),
     });
+}
+
+/** Aplica el color del estado como variable, de donde lo leen el filo y la insignia. */
+function paintStatus(node, anime) {
+    const variable = STATUS_VAR[anime.status];
+    if (variable) node.style.setProperty('--status-color', `var(${variable})`);
+    return node;
+}
+
+function ratingNode(anime, { withSuffix = true } = {}) {
+    return el('span', { class: 'rating' },
+        icon('star', { size: 15 }),
+        el('span', { text: String(anime.rating) }),
+        withSuffix ? el('span', { class: 'rating__suffix', text: '/10' }) : null,
+    );
+}
+
+function statusBadge(anime, extra = '') {
+    return el('span', {
+        class: `badge badge--dot ${extra} badge--${anime.status}`.trim(),
+        text: anime.status,
+    });
+}
+
+function actionsRow(anime) {
+    return el('div', { class: 'card__foot' },
+        el('span', { class: 'card__foot-left' },
+            ratingNode(anime),
+            DataRepository.isPending(username, anime.id)
+                ? el('span', { class: 'badge badge--pending', text: 'pendiente' })
+                : null,
+        ),
+        el('div', { class: 'card__actions' }, ...actionButtons(anime)),
+    );
 }
 
 function cardNode(anime) {
@@ -269,11 +504,11 @@ function cardNode(anime) {
         dataset: { id: anime.id },
     });
 
-    const cover = el('div', { class: 'card__cover' },
+    const cover = paintStatus(el('div', { class: 'card__cover' },
         coverNode(anime),
-        el('span', { class: `badge badge--cover badge--${anime.status}`, text: anime.status }),
-    );
-    if (anime.cover_color) cover.style.background = anime.cover_color;
+        statusBadge(anime, 'badge--cover'),
+    ), anime);
+    if (anime.cover_color) cover.style.backgroundColor = anime.cover_color;
 
     card.append(cover, el('div', { class: 'card__body' },
         el('h3', { class: 'card__title', text: anime.title }),
@@ -292,9 +527,73 @@ function cardNode(anime) {
 }
 
 /**
+ * La misma ficha en horizontal, para quien prefiera leer la lista en vez de
+ * recorrer un muro de portadas. Comparte metadatos y etiquetas con la tarjeta,
+ * pero no repite el bloque de edicion: se reutiliza `editForm` igual que en
+ * rejilla para que ambos modos guarden exactamente lo mismo.
+ */
+function listRow(anime) {
+    const isEditing = state.editingId === anime.id;
+
+    const row = el('article', {
+        class: `row${isEditing ? ' row--editing' : ''}`,
+        role: 'listitem',
+        dataset: { id: anime.id },
+    });
+
+    if (!isEditing) {
+        const cover = paintStatus(el('div', { class: 'row__cover' }, coverNode(anime)), anime);
+        if (anime.cover_color) cover.style.backgroundColor = anime.cover_color;
+
+        row.append(cover, el('div', { class: 'row__main' },
+            el('div', { class: 'row__head' },
+                el('h3', { class: 'row__title', text: anime.title }),
+                el('span', { class: 'row__meta', text: formatMeta(anime) }),
+            ),
+            rankRow(anime),
+            anime.synopsis ? el('p', { class: 'row__synopsis', text: anime.synopsis }) : null,
+            (anime.genres || []).length
+                ? el('div', { class: 'row__genres' },
+                    ...anime.genres.slice(0, 4).map((genre) => el('span', { class: 'tag', text: genre })))
+                : null,
+        ));
+
+        const aside = el('div', { class: 'row__aside' });
+        if (anime.anilist_id || anime.kitsu_id) aside.appendChild(externalLink(anime, 'row__link'));
+        aside.appendChild(ratingNode(anime, { withSuffix: false }));
+
+        if (DataRepository.isPending(username, anime.id)) {
+            aside.appendChild(el('span', { class: 'badge badge--pending', text: 'pendiente' }));
+        }
+
+        aside.append(...actionButtons(anime));
+        row.appendChild(aside);
+    }
+
+    if (isEditing) row.appendChild(editForm(anime));
+    return row;
+}
+
+/** Los dos botones de acción de la ficha, sueltos para reusar en ambos modos. */
+function actionButtons(anime) {
+    const button = (action, glyph, label, extra) => el('button', {
+        class: `icon-btn ${extra}`.trim(),
+        type: 'button',
+        title: label,
+        'aria-label': `${label} ${anime.title}`,
+        dataset: { action },
+    }, icon(glyph, { size: 17 }));
+
+    return [
+        button('edit', 'pencil', 'Editar', ''),
+        button('delete', 'trash', 'Eliminar', 'icon-btn--danger'),
+    ];
+}
+
+/**
  * Las dos insignias de "toda la historia" de AniList. Sin rankings se cae al
  * resumen de Kitsu (nota media y usuarios en sus listas), porque Kitsu no
- * publica posiciones y conviene decirlo antes que dejar la ficha sin nada.
+ * publica posiciones y conviene decirlo antes de dejar la ficha sin nada.
  */
 function rankRow(anime) {
     const badges = rankBadges(anime);
@@ -313,76 +612,63 @@ function rankRow(anime) {
     return nota ? el('p', { class: 'rank-note', text: nota }) : null;
 }
 
-function externalLink(anime) {
+function externalLink(anime, extra = '') {
     if (!anime.anilist_id && !anime.kitsu_id) return null;
 
-    return el('a', {
-        class: 'card__link',
+    const link = el('a', {
+        class: `card__link ${extra}`.trim(),
         href: anime.anilist_id
             ? `https://anilist.co/anime/${anime.anilist_id}`
             : `https://kitsu.io/anime/${anime.kitsu_id}`,
         target: '_blank',
         rel: 'noopener noreferrer',
-        text: 'Ver ficha ↗',
-    });
-}
+        title: 'Ver la ficha en la fuente',
+    }, icon('external-link', { size: 13 }), el('span', { text: 'Ver ficha' }));
 
-function actionsRow(anime) {
-    return el('div', { class: 'card__foot' },
-        el('span', { class: 'rating' },
-            String(anime.rating),
-            el('span', { class: 'rating__suffix', text: '/10' }),
-            DataRepository.isPending(username, anime.id)
-                ? el('span', { class: 'badge badge--pending', text: 'pendiente' })
-                : null,
-        ),
-        el('div', { class: 'card__actions' },
-            el('button', {
-                class: 'icon-btn',
-                type: 'button',
-                title: 'Editar',
-                'aria-label': `Editar ${anime.title}`,
-                dataset: { action: 'edit' },
-                text: '✎',
-            }),
-            el('button', {
-                class: 'icon-btn icon-btn--danger',
-                type: 'button',
-                title: 'Eliminar',
-                'aria-label': `Eliminar ${anime.title}`,
-                dataset: { action: 'delete' },
-                text: '🗑',
-            }),
-        ),
-    );
+    return link;
 }
 
 function editForm(anime) {
     const form = el('form', { class: 'card-edit', novalidate: true });
 
-    const titleInput = el('input', { type: 'text', value: anime.title, maxlength: '200', required: true });
-    const ratingInput = el('input', {
-        type: 'number', min: '1', max: '10', value: String(anime.rating), required: true,
+    /* Los ids salen del id del anime para que no choquen: solo se edita una
+       ficha a la vez, pero el enlace `label[for]` tiene que ser único en el
+       documento y puede haber más de un formulario de este en el árbol. */
+    const fieldId = (name) => `edit-${anime.id}-${name}`;
+
+    const titleInput = el('input', {
+        id: fieldId('title'), type: 'text', value: anime.title, maxlength: '200', required: true,
     });
-    const statusSelect = el('select', {},
+    const ratingInput = el('input', {
+        id: fieldId('rating'), type: 'number', min: '1', max: '10', value: String(anime.rating), required: true,
+    });
+    const statusSelect = el('select', { id: fieldId('status') },
         ...STATUSES.map((value) => el('option', { value, text: value, selected: value === anime.status })),
     );
     const episodesInput = el('input', {
+        id: fieldId('episodes'),
         type: 'text',
         inputmode: 'numeric',
         value: anime.episodes === '?' || anime.episodes == null ? '' : String(anime.episodes),
     });
-    const synopsisInput = el('textarea', { rows: '3', maxlength: '2000' });
+    const synopsisInput = el('textarea', {
+        id: fieldId('synopsis'), rows: '3', maxlength: '2000',
+    });
     synopsisInput.value = anime.synopsis || '';
 
+    const field = (name, label, control) => el('div', { class: 'field' },
+        el('label', { for: fieldId(name), text: label }),
+        control,
+    );
+
     form.append(
-        el('div', { class: 'field' }, el('label', { text: 'Título' }), titleInput),
+        field('title', 'Título', titleInput),
         el('div', { class: 'card-edit__row' },
-            el('div', { class: 'field' }, el('label', { text: 'Nota' }), ratingInput),
-            el('div', { class: 'field' }, el('label', { text: 'Estado' }), statusSelect),
+            field('rating', 'Nota', ratingInput),
+            field('status', 'Estado', statusSelect),
         ),
-        el('div', { class: 'field' }, el('label', { text: 'Episodios' }), episodesInput),
-        el('div', { class: 'field' }, el('label', { text: 'Sinopsis' }), synopsisInput),
+        field('episodes', 'Episodios', episodesInput),
+        field('synopsis', 'Sinopsis', synopsisInput),
         el('div', { class: 'card-edit__actions' },
             el('button', {
                 class: 'btn btn--ghost btn--sm',
@@ -445,10 +731,72 @@ function editForm(anime) {
 /* Render principal                                                 */
 /* ---------------------------------------------------------------- */
 
+/**
+ * Pinta la lista visible.
+ *
+ * Reconcilia por `data-id` en vez de tirar el contenedor entero. Antes cada
+ * cambio de filtro u orden reconstruía N artículos desde cero: con cien
+ * fichas eso son cien portadas que vuelven a pedir su imagen y cien
+ * animaciones de entrada, y el salto se nota sobre todo al ordenar.
+ *
+ * Reutilizando los nodos, el navegador solo mueve lo que cambia de sitio y
+ * las rutas siguen vivas.
+ */
 function applyView() {
     state.shown = visible();
+
+    const isList = state.viewMode === 'list';
+    const build = isList ? listRow : cardNode;
+
+    dom.grid.className = isList ? 'rows' : 'cards';
     dom.listCount.textContent = state.shown.length;
-    dom.grid.replaceChildren(...state.shown.map(cardNode));
+
+    // Índice de lo que ya está pintado, para no recrear lo que no cambia.
+    const existing = new Map();
+    for (const node of dom.grid.children) {
+        if (node.dataset?.id) existing.set(node.dataset.id, node);
+    }
+
+    const entered = [];
+
+    const next = state.shown.map((anime, index) => {
+        const current = existing.get(anime.id);
+
+        if (!current) {
+            const fresh = build(anime);
+
+            // La cascada solo en la primera pintada: aplicarla en cada
+            // repintado convierte filtrar en un parpadeo, no en una animación.
+            if (animateEnter && index < ENTER_STAGGER_LIMIT) {
+                fresh.style.setProperty('--i', index);
+                fresh.classList.add('card--enter');
+                entered.push(fresh);
+            }
+
+            return fresh;
+        }
+
+        existing.delete(anime.id);
+
+        // Solo se reconstruye lo que de verdad difiere: cambiar de modo de
+        // vista, o entrar o salir del modo edición.
+        const editing = state.editingId === anime.id;
+        const wrongMode = current.classList.contains('card') !== !isList;
+        const wrongEditing = current.classList.contains('card--editing') !== editing;
+
+        return wrongMode || wrongEditing ? build(anime) : current;
+    });
+
+    dom.grid.replaceChildren(...next);
+
+    // La clase de animación se retira en el siguiente fotograma: dejarla puesta
+    // pisaría cualquier `animation` legítima que se añada más adelante.
+    if (entered.length) {
+        requestAnimationFrame(() => {
+            for (const node of entered) node.classList.remove('card--enter');
+        });
+        animateEnter = false;
+    }
 
     dom.empty.hidden = state.shown.length > 0;
     if (state.shown.length === 0) {
@@ -456,7 +804,30 @@ function applyView() {
         dom.emptyTitle.textContent = hasAny ? 'Nada coincide con el filtro' : 'Tu lista está vacía';
         dom.emptyText.textContent = hasAny
             ? 'Prueba con otro estado o borra el texto de búsqueda.'
-            : 'Busca un anime arriba y pulsa “Guardar en mi lista”.';
+            : 'Busca un anime, revisa la nota y guárdalo.';
+    }
+
+    announce();
+}
+
+/**
+ * Anuncia el resultado del filtro.
+ *
+ * Va en una región `sr-only` propia y no sobre la rejilla: con `aria-live` en
+ * el contenedor, cada pulsación del filtro volvería a anunciar las cien
+ * fichas de golpe, que es justo lo que un lector de pantalla no necesita.
+ */
+function announce() {
+    const shown = state.shown.length;
+
+    if (state.all.length === 0) {
+        dom.listStatus.textContent = 'Tu lista está vacía.';
+    } else if (shown === 0) {
+        dom.listStatus.textContent = 'Ningún anime coincide con el filtro.';
+    } else if (shown !== state.all.length) {
+        dom.listStatus.textContent = `${shown} de ${state.all.length} animes.`;
+    } else {
+        dom.listStatus.textContent = `${shown} anime${shown === 1 ? '' : 's'} en tu lista.`;
     }
 }
 
@@ -477,9 +848,10 @@ function toEpisodes(value) {
 }
 
 function resetCover() {
-    dom.cover.replaceChildren(
-        el('span', { class: 'cover-preview__empty', 'aria-hidden': 'true', text: '🎞️' }),
-    );
+    dom.cover.replaceChildren(el('span', {
+        class: 'cover-preview__empty',
+        'aria-hidden': 'true',
+    }, icon('film', { size: 24 })));
 }
 
 function fillForm(item) {
@@ -506,10 +878,17 @@ function fillForm(item) {
 
     dom.cover.replaceChildren(
         item.cover_url
-            ? el('img', { src: item.cover_url, alt: `Portada de ${item.title}` })
-            : el('span', { class: 'cover-preview__empty', 'aria-hidden': 'true', text: '🎞️' }),
+            ? el('img', {
+                src: item.cover_url,
+                alt: `Portada de ${item.title}`,
+                decoding: 'async',
+            })
+            : el('span', { class: 'cover-preview__empty', 'aria-hidden': 'true' }, icon('film', { size: 24 })),
     );
 
+    // Si el panel estaba plegado, la ficha recién elegida se perdería detrás
+    // del pliegue: se abre antes de avisar.
+    ensureAddPanelOpen();
     setFormStatus('Ficha cargada: revisa la nota y guarda.', 'success');
     dom.rating.focus();
 }
@@ -554,6 +933,7 @@ async function submitForm(event) {
         dom.form.reset();
         resetCover();
         setFormStatus('');
+        setAddPanelOpen(false);
 
         replaceInList(anime);
         if (!anime) state.all = await DataRepository.getAnimes(username);
@@ -626,6 +1006,86 @@ function syncChips() {
     });
 }
 
+function syncViewSwitch() {
+    dom.viewSwitch.querySelectorAll('[data-view]').forEach((button) => {
+        button.setAttribute('aria-pressed', String(button.dataset.view === state.viewMode));
+    });
+}
+
+/**
+ * El formulario de alta vive plegado: la primera pantalla es la lista, que es
+ * de donde se viene. Abrirlo es explícito y el estado se recuerda, así que
+ * quien alta seguido no lo tiene que desplegar cada vez.
+ *
+ * El colapso se anima con `grid-template-rows: 0fr -> 1fr` en lugar de
+ * `hidden`, porque `display: none` no interpola. Pero `0fr` solo recorta la
+ * caja: el contenido sigue siendo tabulable, así que además se marca
+ * `inert`, que sí lo saca del orden de tabulación y del árbol de accesibilidad
+ * sin interrumpir la transición.
+ */
+function setAddPanelOpen(open, { focus = true } = {}) {
+    dom.addToggle.setAttribute('aria-expanded', String(open));
+    dom.addBody.classList.toggle('is-open', open);
+    dom.addBodyInner.inert = !open;
+
+    Settings.set('addPanelOpen', open);
+    if (open && focus) dom.title.focus();
+}
+
+/** Abre el panel si estaba plegado. Lo llama el buscador al elegir ficha. */
+function ensureAddPanelOpen() {
+    if (dom.addToggle.getAttribute('aria-expanded') !== 'true') {
+        setAddPanelOpen(true);
+    }
+}
+
+function setViewMode(mode) {
+    state.viewMode = mode === 'list' ? 'list' : 'grid';
+    Settings.set('viewMode', state.viewMode);
+    syncViewSwitch();
+    applyView();
+}
+
+/**
+ * Menú de usuario.
+ *
+ * Se cierra con Escape, con clic fuera y con `Tab` fuera; el foco vuelve al
+ * botón que lo abrió para que un teclado no se quede suelto.
+ */
+function initUserMenu() {
+    const close = ({ restoreFocus = false } = {}) => {
+        if (dom.userMenu.hidden) return;
+        dom.userMenu.hidden = true;
+        dom.userButton.setAttribute('aria-expanded', 'false');
+        if (restoreFocus) dom.userButton.focus();
+    };
+
+    const open = () => {
+        dom.userMenu.hidden = false;
+        dom.userButton.setAttribute('aria-expanded', 'true');
+    };
+
+    dom.userButton.addEventListener('click', (event) => {
+        event.stopPropagation();
+        if (dom.userMenu.hidden) open();
+        else close();
+    });
+
+    dom.userMenu.addEventListener('click', (event) => {
+        if (event.target.closest('button')) close();
+    });
+
+    document.addEventListener('click', (event) => {
+        if (!dom.userMenu.hidden && !dom.userMenu.contains(event.target)) close();
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape' || dom.userMenu.hidden) return;
+        event.stopPropagation();
+        close({ restoreFocus: true });
+    });
+}
+
 function bindEvents() {
     initThemeToggle(document.getElementById('btn-theme'));
 
@@ -636,6 +1096,8 @@ function bindEvents() {
         },
     });
 
+    initUserMenu();
+
     // Al salir ya no va a haber quien revoke los object URLs: se liberan ahora
     // para no dejar los bytes de las imagenes en memoria.
     window.addEventListener('pagehide', releaseAllImageUrls);
@@ -643,7 +1105,23 @@ function bindEvents() {
     dom.logout.addEventListener('click', () => {
         releaseAllImageUrls();
         ApiClient.logout();
-        location.href = 'index.html';
+        location.href = 'login.html';
+    });
+
+    dom.addToggle.addEventListener('click', () => {
+        setAddPanelOpen(dom.addToggle.getAttribute('aria-expanded') !== 'true');
+    });
+
+    dom.emptyAction.addEventListener('click', () => searchModal?.open(''));
+
+    // El CSV es el formato por defecto; el aviso ofrece el JSON como
+    // alternativa sin llenar la barra de controles con un segundo boton.
+    dom.export.addEventListener('click', async () => {
+        await exportList('csv');
+        toast('¿Prefieres el JSON?', {
+            duration: 6000,
+            action: { label: 'Descargar JSON', onClick: () => exportList('json') },
+        });
     });
 
     dom.form.addEventListener('submit', submitForm);
@@ -665,9 +1143,15 @@ function bindEvents() {
         applyView();
     });
 
+    /* Sin retardo, cada pulsación reconstruía la lista entera y en una lista
+       larga se notaba como tirones. Con 180 ms hay tiempo de sobra para
+       escribir una palabra sin que el resultado parezca obsoleto. */
+    const onFilter = debounce(() => applyView(), 180);
+
     dom.filterText.addEventListener('input', () => {
         state.textFilter = dom.filterText.value;
-        applyView();
+        Settings.set('textFilter', state.textFilter);
+        onFilter();
     });
 
     dom.sortBy.value = state.sortBy;
@@ -677,11 +1161,17 @@ function bindEvents() {
         applyView();
     });
 
+    dom.viewSwitch.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-view]');
+        if (button) setViewMode(button.dataset.view);
+    });
+
     dom.grid.addEventListener('click', (event) => {
         const button = event.target.closest('button[data-action]');
         if (!button) return;
 
-        const id = button.closest('.card')?.dataset.id;
+        // `.card` y `.row` son los dos envoltorios posibles, según el modo de vista.
+        const id = button.closest('[data-id]')?.dataset.id;
         const anime = state.all.find((entry) => entry.id === id);
         if (!anime) return;
 
@@ -706,7 +1196,11 @@ function bindEvents() {
 }
 
 function boot() {
-    if (!session) return; // redirigiendo al inicio: no hay nada que pintar
+    if (!session) return; // redirigiendo al acceso: no hay nada que pintar
+
+    // Los iconos del HTML estático se sustituyen antes de que se pinten los
+    // datos, para que la cabecera no cambie de aspecto al cargar la lista.
+    hydrateIcons();
 
 // Sin await a proposito: el resto de la interfaz no debe esperar a que
     // lleguen los bytes de las imagenes del perfil.
@@ -723,7 +1217,16 @@ function boot() {
             return renderUser();
         })
         .catch(() => { /* la foto ya pintada sirve de respaldo */ });
+
     syncChips();
+    syncViewSwitch();
+
+    dom.filterText.value = state.textFilter;
+    resetCover();
+    // El panel arranca plegado salvo que se guardara abierto. Sin `focus`, que
+    // robaría el foco a la página recién cargada.
+    setAddPanelOpen(Settings.get('addPanelOpen') === true, { focus: false });
+
     bindEvents();
 
     initAutocomplete({

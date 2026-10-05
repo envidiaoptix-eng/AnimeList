@@ -1,0 +1,225 @@
+/* =============================================================
+   AnimeList · tokens de diseño
+   Único sitio donde vive la paleta, la escala y el movimiento.
+   Los dos temas están calibrados a mano: el claro no es un
+   intercambio de alfa del oscuro, porque así salía lavado.
+   ============================================================= */
+
+/* ---------- Tipografía ---------- */
+/* Escala modular con dos peldaños fluidos para la cabecera de las
+   páginas. Los tamaños fijos se evitan en `html` y `body` para que el
+   zoom del navegador no separe el diseño de su medida. */
+@font-face {
+    font-family: 'InterVar';
+    /* Subconjunto latino variable, pesos 100-900 en un solo fichero. */
+    src: url('../fonts/inter-var.woff2') format('woff2-variations'),
+        url('../fonts/inter-var.woff2') format('woff2');
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
+    /* Solo se aplica al rango latino: evita descargar el fichero para
+       los caracteres que el navegador puede resolver con otra fuente. */
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6,
+        U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC,
+        U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+:root {
+    --font-sans: 'InterVar', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+    --text-2xs: .6875rem;   /* 11px · metadatos de insignia */
+    --text-xs: .75rem;      /* 12px · etiquetas y contadores */
+    --text-sm: .8125rem;    /* 13px · pie de tarjeta, texto de apoyo */
+    --text-base: .875rem;   /* 14px · cuerpo de la interfaz densa */
+    --text-md: .9375rem;    /* 15px · cuerpo de lectura */
+    --text-lg: 1rem;        /* 16px · títulos de bloque */
+    --text-xl: clamp(1.15rem, .3vw + 1.05rem, 1.3rem);
+    --text-2xl: clamp(1.45rem, 1vw + 1.2rem, 1.8rem);
+    --text-3xl: clamp(1.9rem, 3vw + 1.15rem, 2.75rem);
+    --text-4xl: clamp(2.4rem, 5.5vw + 1.1rem, 4rem);
+    --text-5xl: clamp(2.6rem, 7vw + 1rem, 5rem);
+
+    /* Peso yTracking en escala, para no repetir números sueltos. */
+    --weight-regular: 400;
+    --weight-medium: 500;
+    --weight-semibold: 600;
+    --weight-bold: 700;
+
+    --tracking-tight: -.02em;
+    --tracking-snug: -.01em;
+    --tracking-wide: .02em;
+
+    /* ---------- Espaciado (base 4px) ---------- */
+    --space-1: .25rem;
+    --space-2: .5rem;
+    --space-3: .75rem;
+    --space-4: 1rem;
+    --space-5: 1.25rem;
+    --space-6: 1.5rem;
+    --space-7: 1.75rem;
+    --space-8: 2rem;
+    --space-10: 2.5rem;
+    --space-12: 3rem;
+    --space-16: 4rem;
+    --space-20: 5rem;
+
+    /* ---------- Radios ---------- */
+    --radius-xs: 6px;
+    --radius-sm: 8px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    --radius-xl: 20px;
+    --radius-2xl: 28px;
+    --radius-pill: 999px;
+
+    /* ---------- Medidas ---------- */
+    --content-max: 1220px;
+    --content-narrow: 560px;
+    --reading-max: 68ch;
+    --header-height: 64px;
+
+    /* ---------- Movimiento ---------- */
+    --ease: cubic-bezier(.4, 0, .2, 1);
+    --ease-out: cubic-bezier(.2, .8, .3, 1);
+    /* `--dur-1`/`--dur-2` son los peldaños cortos que usan las transiciones
+       de color y sombra; `--dur` a secas se reserva para movimientos. */
+    --dur-1: 140ms;
+    --dur-2: 220ms;
+    --dur-fast: 110ms;
+    --dur: 180ms;
+    --dur-slow: 320ms;
+
+    /* ---------- Z ---------- */
+    --z-header: 50;
+    --z-popover: 70;
+    --z-modal: 90;
+    --z-toast: 120;
+    --z-skip: 200;
+
+    /* ---------- Estado de los animes ---------- */
+    /* Los cuatro nombres vienen del backend; el modificador de CSS es
+       `.badge--<status>`, así que estos tokens son el unico sitio donde
+       se decide el color de cada estado. */
+    --status-pendiente: #5aa9ff;
+    --status-viendo: #ffb84d;
+    --status-completado: #35d07f;
+    --status-abandonado: #7b8194;
+
+    --star: #ffc53d;
+
+    /* ---------- Acento ---------- */
+    /* El acento va en dos tonos para los degradados de la portada. */
+    --accent-2: #7c8cff;
+    /* Fondo translúcido del acento, para iconos sobre superficie neutra. */
+    --accent-subtle: var(--accent-soft);
+    /* Halo del color de marca para fondos. */
+    --accent-glow: var(--glow-1);
+    /* Vidrio de la cabecera. Hereda de la superficie flotante para que el
+       tema claro y el oscuro salgan del mismo sitio. */
+    --glass-bg: var(--float-bg);
+}
+
+/* =============================================================
+   Tema oscuro (por defecto)
+   ============================================================= */
+:root,
+[data-theme='dark'] {
+    color-scheme: dark;
+
+    --bg: #0a0b10;
+    --surface-1: #14161f;
+    --surface-2: #1c1f2a;
+    --surface-3: #262a38;
+    --input-bg: #101219;
+
+    --text: #eceef5;
+    --text-muted: #99a0b3;
+    --text-subtle: #6a7183;
+
+    --border: #262a36;
+    --border-strong: #39404f;
+
+    /* El rosa de marca sobre fondo oscuro necesita tinta oscura encima:
+       el blanco solo daba 2.6:1. */
+    --accent: #ff4d7d;
+    --accent-hover: #ff6b93;
+    --accent-ink: #2a0012;
+    --accent-soft: rgba(255, 77, 125, .14);
+
+    --success: #35d07f;
+    --danger: #ff6369;
+    --warning: #ffb84d;
+
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, .3);
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, .34);
+    --shadow-md: 0 10px 28px rgba(0, 0, 0, .42);
+    --shadow-lg: 0 24px 64px rgba(0, 0, 0, .58);
+    --shadow-xl: 0 40px 100px rgba(0, 0, 0, .62);
+
+    /* Fondo de las superficies translucidas (cabecera, modales, avisos).
+       El alto alfa es lo que hace que el desenfoque se lea como cristal. */
+    --float-bg: rgba(18, 20, 28, .74);
+    --float-border: rgba(255, 255, 255, .09);
+    --blur: saturate(160%) blur(20px);
+
+    /* Halos de fondo. Dos, muy apagados: dan profundidad sin convertirse
+       en el protagonista de la pagina. */
+    --glow-1: rgba(255, 77, 125, .10);
+    --glow-2: rgba(92, 118, 255, .10);
+}
+
+/* =============================================================
+   Tema claro
+   ============================================================= */
+[data-theme='light'] {
+    color-scheme: light;
+
+    --bg: #f4f6fa;
+    --surface-1: #ffffff;
+    --surface-2: #ffffff;
+    --surface-3: #f0f3f8;
+    --input-bg: #ffffff;
+
+    --text: #12141c;
+    --text-muted: #576079;
+    --text-subtle: #7a8298;
+
+    --border: #e3e7ef;
+    --border-strong: #c9cfdd;
+
+    /* Sobre blanco, `--accent` se oscurece para llegar a AA con texto
+       blanco encima; el rosa de marca vive en `--accent-ink-text`
+       para los casos donde el acento va como texto. */
+    --accent: #c9184f;
+    --accent-hover: #a71341;
+    --accent-ink: #ffffff;
+    --accent-soft: rgba(201, 24, 79, .09);
+    --accent-text: #b81547;
+
+    --success: #0d7a41;
+    --danger: #cc2634;
+    --warning: #8a5a00;
+
+    --shadow-xs: 0 1px 2px rgba(16, 18, 36, .05);
+    --shadow-sm: 0 2px 8px rgba(16, 18, 36, .07);
+    --shadow-md: 0 10px 30px rgba(16, 18, 36, .11);
+    --shadow-lg: 0 24px 56px rgba(16, 18, 36, .14);
+    --shadow-xl: 0 40px 90px rgba(16, 18, 36, .18);
+
+    --float-bg: rgba(255, 255, 255, .78);
+    --float-border: rgba(16, 18, 36, .09);
+    --blur: saturate(180%) blur(20px);
+
+    --glow-1: rgba(201, 24, 79, .07);
+    --glow-2: rgba(92, 118, 255, .07);
+
+    --status-pendiente: #0b62c4;
+    --status-viendo: #8f5600;
+    --status-completado: #0c7a42;
+    --status-abandonado: #5b6070;
+}
+
+/* En modo oscuro el texto de acento no necesita token propio. */
+[data-theme='dark'] {
+    --accent-text: var(--accent);
+}

@@ -1,0 +1,399 @@
+/* =============================================================
+   AnimeList · base
+   Reinicio, tipografía, accesibilidad y primitivas de formulario.
+   ============================================================= */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+* { margin: 0; }
+
+/* El atributo `hidden` solo aplica `display: none` desde la hoja del
+   navegador, y cualquier regla del autor con `display` lo pisa.
+   `!important` es lo que devuelve el atributo el mando. */
+[hidden] { display: none !important; }
+
+html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+    /* Reserva el hueco de la barra de scroll para que el ancho del
+       contenido no salte al aparecer o desaparecer en paginas largas. */
+    scrollbar-gutter: stable;
+}
+
+body {
+    min-height: 100vh;
+    font-family: var(--font-sans);
+    /* 16px en `html`, cuerpo algo menor: el panel es denso y a 16px
+       todo se siente enorme. El zoom del navegador sigue mandando. */
+    font-size: var(--text-md);
+    line-height: 1.55;
+    font-feature-settings: 'cv11' 1, 'ss01' 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    color: var(--text);
+    background-color: var(--bg);
+    background-image:
+        radial-gradient(60rem 40rem at 6% -10%, var(--glow-1), transparent 60%),
+        radial-gradient(50rem 36rem at 104% 2%, var(--glow-2), transparent 58%);
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+}
+
+img, svg, video { display: block; max-width: 100%; }
+
+button, input, select, textarea { font: inherit; color: inherit; }
+
+h1, h2, h3, h4 {
+    line-height: 1.18;
+    letter-spacing: var(--tracking-tight);
+    text-wrap: balance;
+}
+
+p { text-wrap: pretty; }
+
+a { color: var(--accent-text); text-underline-offset: 3px; }
+a:hover { color: var(--accent-hover); }
+
+/* ---------- Foco ---------- */
+:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-xs);
+}
+
+/* Teclado, no raton: el anillo aparece al tabular, no al pinchar. */
+:focus:not(:focus-visible) { outline: none; }
+
+/* ---------- Utilidades de accesibilidad ---------- */
+.sr-only {
+    position: absolute;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+.skip-link {
+    position: fixed;
+    top: -100px;
+    left: var(--space-4);
+    z-index: var(--z-skip);
+    padding: var(--space-3) var(--space-5);
+    background: var(--accent);
+    color: var(--accent-ink);
+    border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+    text-decoration: none;
+    font-weight: var(--weight-semibold);
+    transition: top var(--dur) var(--ease);
+}
+
+.skip-link:focus { top: 0; color: var(--accent-ink); }
+
+/* ---------- Contenedor ---------- */
+.app-shell {
+    width: 100%;
+    max-width: var(--content-max);
+    margin-inline: auto;
+    padding-inline: clamp(var(--space-4), 4vw, var(--space-8));
+}
+
+.app-shell--narrow { max-width: var(--content-narrow); }
+
+/* =============================================================
+   Transicion de tema
+
+   Poner una `transition` permanente sobre `body` haria que TODO
+   (cada hover, cada foco) se moviese al aplicar el tema. En su lugar
+   se marca `html` durante el cambio y solo entonces se transiciona.
+   ============================================================= */
+.is-theme-switching,
+.is-theme-switching body,
+.is-theme-switching .panel,
+.is-theme-switching .card,
+.is-theme-switching .stat,
+.is-theme-switching .btn,
+.is-theme-switching .icon-btn,
+.is-theme-switching .chip,
+.is-theme-switching .input,
+.is-theme-switching .modal,
+.is-theme-switching .toast,
+.is-theme-switching .dropdown {
+    transition:
+        background-color var(--dur-slow) var(--ease),
+        border-color var(--dur-slow) var(--ease),
+        color var(--dur-slow) var(--ease),
+        box-shadow var(--dur-slow) var(--ease) !important;
+}
+
+/* =============================================================
+   Iconos
+   `currentColor` en los trazos: un solo SVG vale para cualquier color
+   de texto y cualquier estado.
+   ============================================================= */
+.icon {
+    flex: none;
+    width: 20px;
+    height: 20px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.75;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.icon--sm { width: 16px; height: 16px; stroke-width: 2; }
+.icon--lg { width: 24px; height: 24px; }
+.icon--xl { width: 32px; height: 32px; stroke-width: 1.5; }
+
+/* =============================================================
+   Botones
+   ============================================================= */
+.btn {
+    --btn-bg: var(--surface-2);
+    --btn-ink: var(--text);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    min-height: 44px;
+    padding: var(--space-2) var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--btn-bg);
+    color: var(--btn-ink);
+    font-size: var(--text-base);
+    font-weight: var(--weight-semibold);
+    letter-spacing: var(--tracking-wide);
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+        background-color var(--dur) var(--ease),
+        border-color var(--dur) var(--ease),
+        color var(--dur) var(--ease),
+        box-shadow var(--dur) var(--ease),
+        transform var(--dur-fast) var(--ease);
+}
+
+.btn:hover {
+    background: var(--surface-3);
+    border-color: var(--border-strong);
+}
+
+/* Un desplazamiento de 1px da respuesta sin que el boton parezca flotante. */
+.btn:active { transform: translateY(1px); }
+
+.btn--primary {
+    --btn-bg: var(--accent);
+    --btn-ink: var(--accent-ink);
+    border-color: transparent;
+}
+
+.btn--primary:hover { --btn-bg: var(--accent-hover); }
+
+.btn--danger { --btn-bg: var(--danger); --btn-ink: #fff; border-color: transparent; }
+[data-theme='light'] .btn--danger { --btn-ink: #fff; }
+.btn--danger:hover { filter: brightness(1.08); }
+
+.btn--ghost { --btn-bg: transparent; --btn-ink: var(--text-muted); }
+.btn--ghost:hover { --btn-bg: var(--surface-3); --btn-ink: var(--text); }
+
+.btn--sm { min-height: 36px; padding: var(--space-1) var(--space-3); font-size: var(--text-sm); }
+.btn--lg { min-height: 50px; padding: var(--space-3) var(--space-6); font-size: var(--text-md); }
+.btn--block { width: 100%; }
+
+.btn[disabled],
+.btn[aria-busy='true'] {
+    opacity: .55;
+    cursor: progress;
+    transform: none;
+}
+
+.btn[disabled]:not([aria-busy='true']) { cursor: not-allowed; }
+
+/* ---------- Boton de icono ---------- */
+.icon-btn {
+    display: inline-grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    flex: none;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition:
+        background-color var(--dur) var(--ease),
+        border-color var(--dur) var(--ease),
+        color var(--dur) var(--ease),
+        transform var(--dur-fast) var(--ease);
+}
+
+.icon-btn:hover {
+    background: var(--surface-3);
+    border-color: var(--border-strong);
+    color: var(--text);
+}
+
+.icon-btn:active { transform: translateY(1px); }
+
+.icon-btn--danger:hover {
+    background: color-mix(in srgb, var(--danger) 12%, transparent);
+    border-color: var(--danger);
+    color: var(--danger);
+}
+
+.icon-btn--sm { width: 34px; height: 34px; }
+
+/* =============================================================
+   Campos
+   ============================================================= */
+input, select, textarea {
+    width: 100%;
+    min-height: 44px;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--input-bg);
+    color: var(--text);
+    font-size: var(--text-base);
+    transition:
+        border-color var(--dur) var(--ease),
+        box-shadow var(--dur) var(--ease),
+        background-color var(--dur) var(--ease);
+}
+
+textarea { min-height: 88px; resize: vertical; line-height: 1.5; }
+
+select {
+    appearance: none;
+    padding-right: var(--space-8);
+    /* Flecha propia en `currentColor`: el triangulo con bordes se ve
+       distinto en cada navegador y no se recolorea con el tema. */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-position: right var(--space-3) center;
+    background-size: 16px;
+    background-repeat: no-repeat;
+    cursor: pointer;
+}
+
+input::placeholder, textarea::placeholder {
+    color: var(--text-subtle);
+}
+
+input:focus, select:focus, textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+input[type='search']::-webkit-search-cancel-button { cursor: pointer; }
+
+/* ---------- Estructura de campo ---------- */
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 0;
+}
+
+.field--grow { flex: 1 1 260px; position: relative; }
+.field--wide { grid-column: 1 / -1; }
+
+label, .field__label {
+    font-size: var(--text-xs);
+    font-weight: var(--weight-semibold);
+    color: var(--text-muted);
+    letter-spacing: var(--tracking-wide);
+}
+
+.field__hint { font-size: var(--text-xs); color: var(--text-muted); }
+
+.form-stack { display: flex; flex-direction: column; gap: var(--space-4); }
+
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: var(--space-4);
+    align-items: start;
+}
+
+.form-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+/* ---------- Estado del formulario ---------- */
+.form-status {
+    flex: 1 1 200px;
+    min-height: 1.4em;
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+}
+
+.form-status.is-error { color: var(--danger); }
+.form-status.is-success { color: var(--success); }
+
+/* ---------- Interruptor ---------- */
+.switch {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.switch input {
+    width: 18px;
+    height: 18px;
+    min-height: 0;
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+
+/* ---------- Cargador de un boton ---------- */
+.spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid color-mix(in srgb, currentColor 25%, transparent);
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* =============================================================
+   Preferencias del usuario
+   ============================================================= */
+@media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+
+    *, *::before, *::after {
+        animation-duration: .001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .001ms !important;
+        transition-delay: 0ms !important;
+    }
+
+    .btn:hover, .btn:active,
+    .icon-btn:hover, .icon-btn:active { transform: none; }
+}
+
+/* El desenfoque tambien es movimiento: se apaga. */
+@media (prefers-reduced-transparency: reduce) {
+    :root, [data-theme='light'] { --blur: none; }
+}
+
+@media (prefers-contrast: more) {
+    :root, [data-theme='light'] {
+        --border: var(--border-strong);
+        --text-muted: var(--text);
+    }
+}

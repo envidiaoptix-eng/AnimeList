@@ -161,8 +161,10 @@ def public_profile(username, profile=None):
         'username': username,
         'display_name': profile.get('display_name') or username,
         'avatar_url': profile.get('avatar_url', ''),
+        'background_url': profile.get('background_url', ''),
         'has_avatar': bool(profile.get('avatar_blob')),
         'has_banner': bool(profile.get('banner_blob')),
+        'has_background': bool(profile.get('background_blob')),
         'created_at': profile.get('created_at'),
     }
 

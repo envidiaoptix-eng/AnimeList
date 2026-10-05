@@ -3,8 +3,7 @@
  *
  * Orden de prioridad real:
  *   1. Flask REST API  -> fuente de verdad
- *   2. Firebase        -> copia opcional, solo si hay configuración válida
- *   3. localStorage    -> caché de lectura y cola de operaciones pendientes
+ *   2. localStorage    -> caché de lectura y cola de operaciones pendientes
  *
  * Si Flask no responde por red, las escrituras se guardan localmente y entran
  * en la cola; al recuperar la conexión se reintentan en orden.
@@ -69,11 +68,6 @@ function writableFields(anime) {
     };
 }
 
-function firebase() {
-    const service = window.FirebaseService;
-    return service?.isInitialized?.() ? service : null;
-}
-
 export const DataRepository = {
     /** Indica si la última escritura quedó pendiente de enviar. */
     isPending(username, animeId) {
@@ -112,7 +106,6 @@ export const DataRepository = {
         try {
             const saved = normalizeAnime(await ApiClient.addAnime(payload));
             AnimeCache.update(username, saved, 'add');
-            await this._mirror(username, saved);
             return { anime: saved, queued: false };
         } catch (error) {
             if (error instanceof ApiError && error.status === 0) {
@@ -134,7 +127,6 @@ export const DataRepository = {
         try {
             const saved = normalizeAnime(await ApiClient.updateAnime(animeId, fields));
             AnimeCache.update(username, saved, 'update');
-            await this._mirror(username, saved);
             return { anime: saved, queued: false };
         } catch (error) {
             if (error instanceof ApiError && error.status === 0) {
@@ -164,7 +156,6 @@ export const DataRepository = {
 
         try {
             await ApiClient.deleteAnime(animeId);
-            firebase()?.deleteAnime(username, animeId)?.catch(() => {});
             return { deleted: true, queued: false, previous };
         } catch (error) {
             if (error instanceof ApiError && error.status === 0) {
@@ -209,12 +200,46 @@ export const DataRepository = {
         return saved;
     },
 
+    /**
+     * Guarda nombre visible y URL de avatar, tolerando la falta de red.
+     *
+     * A la cola solo van estos dos campos. Los bytes de las imágenes son
+     * ~120 KB de base64 y la cola vive en localStorage, con unos 5 MB de
+     * cuota: encolar un banner sin red puede acabar vaciando la caché de
+     * animes. Las imágenes se avisan como «necesita conexión».
+     */
+    async saveProfile(fields, username) {
+        const payload = {};
+        if ('display_name' in fields) payload.display_name = fields.display_name;
+        if ('avatar_url' in fields) payload.avatar_url = fields.avatar_url;
+        // La URL del fondo entra en la cola porque es una cadena corta. El
+        // fichero no: son ~400 KB de base64 contra una cuota de unos 5 MB.
+        if ('background_url' in fields) payload.background_url = fields.background_url;
+        if (!Object.keys(payload).length) return { profile: null, queued: false };
+
+        try {
+            return { profile: (await ApiClient.updateProfile(payload)).profile, queued: false };
+        } catch (error) {
+            if (error instanceof ApiError && error.status === 0) {
+                OfflineQueue.push(username, {
+                    method: 'PUT',
+                    path: '/profile',
+                    body: payload,
+                    kind: 'profile',
+                });
+                return { profile: null, queued: true };
+            }
+            throw error;
+        }
+    },
+
     /** Reintenta la cola offline. Devuelve cuántas operaciones se sincronizaron. */
     async flushQueue(username) {
         if (!ApiClient.isAuthenticated() || navigator.onLine === false) {
             return { synced: 0, remaining: this.queueSize(username) };
         }
 
+        const queued = OfflineQueue.read(username);
         const { synced, remaining } = await OfflineQueue.flush(username, async (entry) => {
             await ApiClient.request(entry.path, {
                 method: entry.method,
@@ -223,7 +248,15 @@ export const DataRepository = {
         });
 
         if (synced > 0) await this.getAnimes(username);
-        return { synced, remaining };
+
+        // `flush` reintenta en orden y para en el primer fallo, así que las
+        // `synced` primeras son exactamente las que salieron. Las entradas de
+        // perfil no se ven en `getAnimes`: se pide el perfil aparte para que la
+        // cabecera se repinta con el nombre nuevo.
+        const touchedProfile = queued.slice(0, synced).some((entry) => entry.kind === 'profile');
+        if (touchedProfile) await ApiClient.getProfile().catch(() => null);
+
+        return { synced, remaining, touchedProfile };
     },
 
     _storeLocally(payload, username, queueEntry) {
@@ -233,15 +266,5 @@ export const DataRepository = {
             OfflineQueue.push(username, { ...queueEntry, body: writableFields(local), animeId: local.id });
         }
         return { anime: local, queued: true };
-    },
-
-    async _mirror(username, anime) {
-        const service = firebase();
-        if (!service) return;
-        try {
-            await service.addAnime(username, anime);
-        } catch (error) {
-            console.warn('Copia en Firebase fallida (no afecta a Flask):', error.message);
-        }
     },
 };

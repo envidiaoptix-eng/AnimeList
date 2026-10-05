@@ -1,6 +1,10 @@
 __pycache__/
 env/
 
+# Planes de trabajo de la sesion. Son notas con referencias a lineas concretas
+# que envejecen mal; lo que hay que saber esta en AGENTS.md.
+.opencode/
+
 # Clave de firma de los tokens: se genera sola en el primer arranque.
 # Nunca debe subirse al repositorio.
 Backend/secret.key
@@ -11,7 +15,7 @@ Backend/anime_list.json
 Backend/*.corrupto-*
 Backend/.tmp-*
 
-# Firebase (ver Backend/firestore_store.py y Frontend/firebase-config.js)
+# Firebase (ver Backend/firestore_store.py; el cliente no habla con Firestore)
 .firebase/
 firebase-debug.log
 firestore-debug.log

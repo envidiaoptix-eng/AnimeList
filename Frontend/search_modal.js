@@ -14,23 +14,33 @@ import { el, debounce, fallbackMeta, formatMeta, rankBadges } from './ui.js';
 
 const DEBOUNCE_MS = 320;
 
-function tileContent(item) {
-    const fragment = document.createDocumentFragment();
+/* Nº de esqueletos mientras llegan los resultados. */
+const SKELETON_COUNT = 8;
 
-    if (item.cover_url) {
-        const img = el('img', {
+/** Portada de la ficha, o su inicial si la fuente no trae imagen. */
+function tileCover(item) {
+    const letter = (item.title || '?').charAt(0);
+
+    return item.cover_url
+        ? el('img', {
             src: item.cover_url,
             alt: '',
             loading: 'lazy',
-            onError: (event) => event.target.replaceWith(
-                el('div', { class: 'card__cover--empty', text: (item.title || '?').charAt(0) }),
-            ),
-        });
-        fragment.appendChild(img);
-    } else {
-        fragment.appendChild(el('div', { class: 'card__cover--empty', text: (item.title || '?').charAt(0) }));
-    }
+            decoding: 'async',
+            onError: (event) => event.target.replaceWith(emptyCover(letter)),
+        })
+        : emptyCover(letter);
+}
 
+function emptyCover(letter) {
+    return el('div', { class: 'cover-empty', 'aria-hidden': 'true' },
+        el('span', { class: 'cover-empty__letter', text: letter }));
+}
+
+function tileContent(item) {
+    const fragment = document.createDocumentFragment();
+
+    fragment.appendChild(tileCover(item));
     fragment.appendChild(el('span', { class: 'search-tile__title', text: item.title }));
 
     const badges = rankBadges(item);
@@ -69,6 +79,14 @@ export function initSearchModal({ onPick } = {}) {
     const state = { page: 1, term: '', items: [], hasNext: false, activeIndex: -1 };
     let controller = null;
 
+    // El campo gobierna una lista de opciones, así que es un combobox. Sin esto
+    // el resaltado con las flechas es solo visual: el lector de pantalla no
+    // sabe que hay algo seleccionado.
+    input.setAttribute('role', 'combobox');
+    input.setAttribute('aria-autocomplete', 'list');
+    input.setAttribute('aria-expanded', 'false');
+    input.setAttribute('aria-controls', results.id);
+
     const setStatus = (text, isError = false) => {
         status.textContent = text;
         status.classList.toggle('is-error', isError);
@@ -76,7 +94,7 @@ export function initSearchModal({ onPick } = {}) {
 
     const renderSkeletons = () => {
         results.replaceChildren(
-            ...Array.from({ length: 8 }, () => el('div', { class: 'skeleton skeleton--card' })),
+            ...Array.from({ length: SKELETON_COUNT }, () => el('div', { class: 'skeleton skeleton--card' })),
         );
     };
 
@@ -91,7 +109,10 @@ export function initSearchModal({ onPick } = {}) {
 
         results.replaceChildren(
             ...state.items.map((item, index) => {
+                // El id estable es lo que `aria-activedescendant` apunta desde el
+                // campo de texto; sin él la selección resaltada no se anuncia.
                 const tile = el('button', {
+                    id: `search-tile-${index}`,
                     class: 'search-tile',
                     type: 'button',
                     role: 'option',
@@ -117,6 +138,11 @@ export function initSearchModal({ onPick } = {}) {
             tile.setAttribute('aria-selected', String(isActive));
             if (isActive) tile.scrollIntoView({ block: 'nearest' });
         });
+
+        // `aria-activedescendant` es lo que hace que un lector de pantalla
+        // siga la selección: sin él, el foco real sigue en el campo de texto
+        // y la casilla resaltada no se anuncia aunque se vea.
+        input.setAttribute('aria-activedescendant', tiles[state.activeIndex].id);
     };
 
     /** Deja el modal como estaba al abrirse: sin resultados ni paginación. */
@@ -200,12 +226,21 @@ export function initSearchModal({ onPick } = {}) {
             // y no llega a cerrar el <dialog>. Se cierra aquí y se evita el vaciado.
             event.preventDefault();
             dialog.close();
-        } else if (event.key === 'ArrowDown') {
+            return;
+        }
+
+        if (event.key === 'ArrowDown') {
             event.preventDefault();
             setActive(state.activeIndex + 1);
         } else if (event.key === 'ArrowUp') {
             event.preventDefault();
             setActive(state.activeIndex - 1);
+        } else if (event.key === 'Home') {
+            event.preventDefault();
+            setActive(0);
+        } else if (event.key === 'End') {
+            event.preventDefault();
+            setActive(state.items.length - 1);
         } else if (event.key === 'Enter') {
             if (state.activeIndex >= 0 && state.items[state.activeIndex]) {
                 event.preventDefault();
@@ -216,6 +251,7 @@ export function initSearchModal({ onPick } = {}) {
 
     dialog.addEventListener('close', () => {
         controller?.abort();
+        input.removeAttribute('aria-activedescendant');
         // Sin esto, reabrir el modal mostraria los resultados de la busqueda
         // anterior bajo el texto de "escribe el nombre de un anime".
         reset();
@@ -256,7 +292,8 @@ export function initAutocomplete({ input, box, onPick, minChars = 3 }) {
         box.replaceChildren();
         items = [];
         activeIndex = -1;
-        input.removeAttribute('aria-expanded');
+        input.setAttribute('aria-expanded', 'false');
+        input.removeAttribute('aria-activedescendant');
     };
 
     const setActive = (next) => {
@@ -270,6 +307,8 @@ export function initAutocomplete({ input, box, onPick, minChars = 3 }) {
             option.setAttribute('aria-selected', String(isActive));
             if (isActive) option.scrollIntoView({ block: 'nearest' });
         });
+
+        input.setAttribute('aria-activedescendant', options[activeIndex].id);
     };
 
     async function lookup() {
@@ -297,6 +336,7 @@ export function initAutocomplete({ input, box, onPick, minChars = 3 }) {
 
             box.replaceChildren(
                 ...items.map((item, index) => el('button', {
+                    id: `anime-suggestion-${index}`,
                     class: 'autocomplete__item',
                     type: 'button',
                     role: 'option',
@@ -330,6 +370,7 @@ export function initAutocomplete({ input, box, onPick, minChars = 3 }) {
     input.setAttribute('role', 'combobox');
     input.setAttribute('aria-autocomplete', 'list');
     input.setAttribute('aria-expanded', 'false');
+    input.setAttribute('aria-controls', box.id || 'autocomplete');
 
     input.addEventListener('input', debounce(lookup, DEBOUNCE_MS));
     input.addEventListener('blur', () => setTimeout(close, 160));
@@ -342,6 +383,12 @@ export function initAutocomplete({ input, box, onPick, minChars = 3 }) {
         } else if (event.key === 'ArrowUp') {
             event.preventDefault();
             setActive(activeIndex - 1);
+        } else if (event.key === 'Home') {
+            event.preventDefault();
+            setActive(0);
+        } else if (event.key === 'End') {
+            event.preventDefault();
+            setActive(items.length - 1);
         } else if (event.key === 'Enter' && activeIndex >= 0) {
             event.preventDefault();
             if (items[activeIndex]) pick(items[activeIndex].title);

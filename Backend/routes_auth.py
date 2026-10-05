@@ -11,6 +11,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from auth import make_token, require_auth
 from config import (
     AVATAR_MAX_BYTES,
+    BACKGROUND_MAX_BYTES,
     BANNER_MAX_BYTES,
     IMAGE_KINDS,
     PASSWORD_MAX,
@@ -29,7 +30,16 @@ USERNAME_PATTERN = re.compile(r'^[A-Za-z0-9_.-]+$')
 # reescalado. Son campos aparte de `avatar_url`, que sigue siendo solo una URL
 # externa: así `public_profile` puede decir `has_avatar` sin arrastrar 120 KB de
 # base64 en cada llamada a /api/me.
-IMAGE_FIELDS = {'avatar': ('avatar_blob', AVATAR_MAX_BYTES), 'banner': ('banner_blob', BANNER_MAX_BYTES)}
+IMAGE_FIELDS = {
+    'avatar': ('avatar_blob', AVATAR_MAX_BYTES),
+    'banner': ('banner_blob', BANNER_MAX_BYTES),
+    'background': ('background_blob', BACKGROUND_MAX_BYTES),
+}
+
+# Campos del perfil que guardan la URL externa de una imagen. Solo avatar y
+# fondo: el banner siempre se sube como fichero, asi que no hay `banner_url`
+# ni en el perfil ni en `public_profile`.
+URL_FIELDS = {'avatar_url': 'avatar', 'background_url': 'fondo de página'}
 
 # Se valida la cabecera del archivo, no el nombre ni el `Content-Type` que
 # declara el cliente: los dos los controla quien llama. Solo se aceptan JPEG y
@@ -168,11 +178,13 @@ def update_profile(username):
             return jsonify({'error': 'El nombre visible debe tener entre 1 y 50 caracteres.'}), 400
         profile['display_name'] = display_name
 
-    if 'avatar_url' in data:
-        avatar_url = str(data['avatar_url']).strip()
-        if not _is_safe_url(avatar_url):
-            return jsonify({'error': 'La URL del avatar debe empezar por http o https.'}), 400
-        profile['avatar_url'] = avatar_url
+    for field, label in URL_FIELDS.items():
+        if field not in data:
+            continue
+        value = str(data[field]).strip()
+        if not _is_safe_url(value):
+            return jsonify({'error': f'La URL del {label} debe empezar por http o https.'}), 400
+        profile[field] = value
 
     save_users(users)
     return jsonify({'profile': public_profile(username, profile)})
@@ -190,7 +202,7 @@ def update_profile_image(username):
     data = request.get_json(silent=True) or {}
     kind = str(data.get('kind') or '').strip()
     if kind not in IMAGE_KINDS:
-        return jsonify({'error': 'Indica si es el avatar o el banner.'}), 400
+        return jsonify({'error': 'Indica qué imagen es: avatar, banner o fondo.'}), 400
 
     users = load_users()
     profile = users.get(username)
@@ -245,10 +257,15 @@ def get_profile_image(username, kind):
     except (binascii.Error, ValueError):
         return jsonify({'error': 'La imagen almacenada está corrupta.'}), 500
 
+    # `no-store` y no `max-age`: la imagen cambia cada vez que el usuario la
+    # sustituye, y con cache el navegador devolvia la copia de ayer sin preguntar
+    # al servidor, asi que subir un avatar nuevo no se veia hasta recargar. Quitar
+    # si funcionaba porque no pasa por aqui. El `Map` de `profile.js` ya evita
+    # repetir la descarga dentro de una sesion, que es la unica cache que interesa.
     return Response(
         data,
         mimetype=mime,
-        headers={'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff'},
+        headers={'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff'},
     )
 
 

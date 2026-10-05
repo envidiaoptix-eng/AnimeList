@@ -12,6 +12,12 @@ const DEFAULT_SETTINGS = {
     statusFilter: 'Todos',
     sortBy: 'updated',
     showAdult: false,
+    /* Estado del panel de alta, del conmutador de vista y del filtro de texto.
+       Se guardan para que recargar no devuelva la página a su estado de
+       fábrica: el filtro en particular se perdía en cada recarga. */
+    addPanelOpen: false,
+    viewMode: 'grid',
+    textFilter: '',
 };
 
 function readJSON(key, fallback) {

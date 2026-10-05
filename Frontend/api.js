@@ -72,7 +72,20 @@ export const ApiClient = {
         localStorage.removeItem(SESSION_KEY);
     },
 
-    async request(path, { method = 'GET', body = null, auth = true, signal = null } = {}) {
+    /**
+     * `keepSessionOn401` desactiva el cierre de sesión ante un 401.
+     * Existe para `changePassword`: allí un 401 significa «la contraseña
+     * actual no es correcta», no «el token caducó». Sin esta bandera,
+     * teclear mal la contraseña actual expulsaba al usuario del formulario
+     * con una redirección a la pantalla de acceso.
+     */
+    async request(path, {
+        method = 'GET',
+        body = null,
+        auth = true,
+        signal = null,
+        keepSessionOn401 = false,
+    } = {}) {
         const headers = {};
         if (body !== null) headers['Content-Type'] = 'application/json';
 
@@ -105,7 +118,7 @@ export const ApiClient = {
             }
         }
 
-        if (response.status === 401 && auth) {
+        if (response.status === 401 && auth && !keepSessionOn401) {
             this.clearSession();
             if (!location.pathname.endsWith('index.html')) {
                 location.href = 'index.html';
@@ -179,6 +192,7 @@ export const ApiClient = {
         return this.request('/password', {
             method: 'POST',
             body: { current_password: currentPassword, new_password: newPassword },
+            keepSessionOn401: true,
         });
     },
 
