@@ -160,6 +160,51 @@ check('el boton del menu abre el censo', 'dom.adminButton.addEventListener' in d
 check('la contrasena respeta el minimo del backend', "minlength: '6'" in dash)
 check('dashboard.css da scroll al censo', '.admin-users {' in dash_css)
 
+print('amigos: el dialogo del menu')
+check('dashboard.html tiene el boton #btn-friends', 'btn-friends' in ids_html)
+check('dashboard.html tiene el dialogo #friends-dialog', 'friends-dialog' in ids_html)
+check('el dialogo trae su buscador de cuentas', 'friend-request-input' in ids_html)
+check('y su datalist de sugerencias', 'friend-request-suggestions' in ids_html)
+check('dashboard.js engancha el boton de amigos', 'dom.friendsButton.addEventListener' in dash)
+check('el listado de amigos usa el scroll del censo',
+      "document.getElementById('friends-list')" in dash and '.admin-users' in leer(FRONTEND / 'css' / 'dashboard.css'))
+check('dashboard.css da scroll a los amigos', '#friends-dialog[open]' in dash_css)
+check('toda accion de amistad pasa por confirmDialog cuando es destructiva',
+      dash.count("confirmDialog({") >= 2 and 'Dejar de ser amigo' in dash)
+
+print('muro de comentarios en lista ajena')
+for cid in ('wall', 'wall-form', 'wall-text', 'wall-status', 'wall-list',
+            'wall-count', 'wall-target', 'view-friend-actions'):
+    check('dashboard.html tiene #' + cid, cid in ids_html)
+check('el muro solo se abre en lista ajena', 'dom.wall.hidden = false;' in dash)
+check('el muro se pide con target = la cuenta visitada',
+      'ApiClient.listComments({ target: viewUser })' in dash)
+check('publicar lleva el target de la cuenta visitada',
+      'ApiClient.addComment({ text, target: viewUser })' in dash)
+check('dashboard.css define .wall', '.wall {' in dash_css)
+check('dashboard.css define .wall-comment', '.wall-comment {' in dash_css)
+check('dashboard.css define .view-banner__actions', '.view-banner__actions {' in dash_css)
+check('el icono del muro esta en el catalogo', '\n    message: [' in leer(FRONTEND / 'icons.js'))
+
+print('api.js: los metodos sociales')
+api_js = leer(FRONTEND / 'api.js')
+for metodo in ('listFriends', 'sendFriendRequest', 'acceptFriendRequest',
+               'rejectFriendRequest', 'removeFriend', 'listComments',
+               'addComment', 'deleteComment'):
+    check('ApiClient.%s existe' % metodo, metodo in api_js)
+check('addComment envia el campo target', 'body.target = target;' in api_js)
+
+print('el campo target viaja en el backend')
+codigo_social = '\n'.join(
+    linea for linea in leer(BACKEND / 'routes_social.py').splitlines()
+    if not linea.lstrip().startswith('#'))
+check('routes_social filtra por target', "request.args.get('target')" in codigo_social)
+check('routes_social guarda el target', "'target': target," in codigo_social)
+check('la purga de cuenta se lleva los comentarios dirigidos',
+      "c.get('target') != username" in codigo_social)
+check('store normaliza target en los comentarios', "setdefault('target', '')" in leer(BACKEND / 'store.py'))
+check('smoke_social existe', (BACKEND / 'tests' / 'smoke_social.py').exists())
+
 print('codigo muerto y trampas conocidas')
 todo_js = '\n'.join(leer(p) for p in FRONTEND.glob('*.js'))
 todo_html = '\n'.join(leer(p) for p in FRONTEND.glob('*.html'))

@@ -111,6 +111,15 @@ const dom = {
     viewInput: document.getElementById('view-user-input'),
     viewSuggestions: document.getElementById('view-user-suggestions'),
     adminButton: document.getElementById('btn-admin'),
+    friendsButton: document.getElementById('btn-friends'),
+    viewFriendActions: document.getElementById('view-friend-actions'),
+    wall: document.getElementById('wall'),
+    wallForm: document.getElementById('wall-form'),
+    wallText: document.getElementById('wall-text'),
+    wallStatus: document.getElementById('wall-status'),
+    wallList: document.getElementById('wall-list'),
+    wallCount: document.getElementById('wall-count'),
+    wallTarget: document.getElementById('wall-target'),
 };
 
 const state = {
@@ -356,7 +365,204 @@ function renderViewBanner() {
         : `@${viewUser}`;
     dom.viewBannerMeta.textContent = `${state.all.length} anime${state.all.length === 1 ? '' : 's'} en su lista`;
     dom.viewBanner.hidden = false;
+    renderFriendActions();
 }
+
+/**
+ * Botón de amistad en la banda de lista ajena.
+ *
+ * El estado (`none`, `outgoing`, `incoming`, `friend`) lo trae
+ * `GET /api/users/<target>` en `state.viewProfile.friendship`; aquí solo se
+ * pinta la acción que corresponde. Tras cada operación el servidor devuelve el
+ * estado nuevo (`response.state`), así que se refleja sin volver a pedir el
+ * perfil. Si aún no llegó el perfil, no se pinta nada: el botón nunca debe
+ * adivinar el estado.
+ */
+function renderFriendActions() {
+    if (isOwnList) return;
+    const box = dom.viewFriendActions;
+    const friendship = state.viewProfile?.friendship;
+    box.replaceChildren();
+    box.hidden = !friendship || friendship === 'self';
+
+    if (box.hidden) return;
+
+    /** Aplica `response.state` al perfil pintado y repinta la banda. */
+    const apply = (response) => {
+        if (state.viewProfile && response?.state) {
+            state.viewProfile.friendship = response.state;
+        }
+        renderFriendActions();
+    };
+
+    const call = async (action, successMessage) => {
+        try {
+            const response = await action();
+            if (successMessage) toast(successMessage, { type: 'success' });
+            apply(response);
+        } catch (error) {
+            toast(error.message || 'No se ha podido completar la operación.', { type: 'error' });
+        }
+    };
+
+    if (friendship === 'none') {
+        box.append(el('button', {
+            class: 'btn btn--primary btn--sm',
+            type: 'button',
+            text: 'Añadir amigo',
+            onClick: () => call(
+                () => ApiClient.sendFriendRequest(viewUser),
+                `Solicitud enviada a ${viewUser}.`,
+            ),
+        }));
+    } else if (friendship === 'outgoing') {
+        box.append(el('button', {
+            class: 'btn btn--ghost btn--sm',
+            type: 'button',
+            text: 'Solicitud enviada · Retirar',
+            onClick: () => call(
+                () => ApiClient.rejectFriendRequest(viewUser),
+                'Solicitud retirada.',
+            ),
+        }));
+    } else if (friendship === 'incoming') {
+        box.append(
+            el('button', {
+                class: 'btn btn--primary btn--sm',
+                type: 'button',
+                text: 'Aceptar solicitud',
+                onClick: () => call(
+                    () => ApiClient.acceptFriendRequest(viewUser),
+                    `Ahora sois amigos de ${viewUser}.`,
+                ),
+            }),
+            el('button', {
+                class: 'btn btn--ghost btn--sm',
+                type: 'button',
+                text: 'Rechazar',
+                onClick: () => call(
+                    () => ApiClient.rejectFriendRequest(viewUser),
+                    'Solicitud rechazada.',
+                ),
+            }),
+        );
+    } else if (friendship === 'friend') {
+        box.append(el('button', {
+            class: 'btn btn--ghost btn--sm',
+            type: 'button',
+            text: 'Sois amigos · Dejar de serlo',
+            onClick: async () => {
+                const confirmed = await confirmDialog({
+                    title: 'Eliminar amistad',
+                    message: `¿Dejar de ser amigo de ${viewUser}?`,
+                    confirmLabel: 'Eliminar',
+                    danger: true,
+                });
+                if (!confirmed) return;
+                await call(() => ApiClient.removeFriend(viewUser),
+                    `Ya no eres amigo de ${viewUser}.`);
+            },
+        }));
+    }
+}
+
+/* ---------------------------------------------------------------- */
+/* Muro de comentarios de la lista ajena                             */
+/* ---------------------------------------------------------------- */
+
+const wall = {
+    comments: [],
+
+    /** Pide el muro de la cuenta visitada y lo repinta. */
+    async load() {
+        dom.wallList.replaceChildren();
+        dom.wallStatus.textContent = 'Cargando comentarios…';
+        dom.wallStatus.classList.remove('is-error');
+        try {
+            const data = await ApiClient.listComments({ target: viewUser });
+            this.comments = data.comments || [];
+            this.render();
+        } catch (error) {
+            dom.wallStatus.textContent = error.message || 'No se pudieron cargar los comentarios.';
+            dom.wallStatus.classList.add('is-error');
+        }
+    },
+
+    render() {
+        const total = this.comments.length;
+        dom.wallCount.textContent = String(total);
+
+        if (!total) {
+            dom.wallList.replaceChildren(el('p', {
+                class: 'wall-empty',
+                text: `Todavía no hay comentarios en la lista de ${viewUser}.`,
+            }));
+            dom.wallStatus.textContent = '';
+            return;
+        }
+
+        dom.wallList.replaceChildren(...this.comments.map((comment) => this.row(comment)));
+        hydrateIcons(dom.wallList);
+        dom.wallStatus.textContent = '';
+    },
+
+    row(comment) {
+        const mine = comment.user === username;
+        const canDelete = mine || Boolean(session?.profile?.is_admin);
+        const when = comment.created_at ? comment.created_at.slice(0, 10) : '';
+
+        return el('article', { class: 'wall-comment', dataset: { id: comment.id } },
+            el('div', { class: 'wall-comment__body' },
+                el('p', { class: 'wall-comment__meta' },
+                    el('span', {
+                        class: 'wall-comment__author',
+                        text: comment.display_name || comment.user,
+                    }),
+                    el('span', { text: `@${comment.user}` }),
+                    when ? el('span', { text: when }) : null,
+                ),
+                el('p', { class: 'wall-comment__text', text: comment.text }),
+            ),
+            // El backend decide quién puede borrar (autor o admin); el botón
+            // solo evita el viaje a quien ya sabe que no podrá.
+            canDelete ? el('button', {
+                class: 'icon-btn',
+                type: 'button',
+                'aria-label': 'Borrar comentario',
+                onClick: async () => {
+                    const confirmed = await confirmDialog({
+                        title: 'Borrar comentario',
+                        message: '¿Eliminar este comentario?',
+                        confirmLabel: 'Borrar',
+                        danger: true,
+                    });
+                    if (!confirmed) return;
+                    try {
+                        await ApiClient.deleteComment(comment.id);
+                        toast('Comentario eliminado.', { type: 'success' });
+                        this.comments = this.comments.filter((c) => c.id !== comment.id);
+                        this.render();
+                    } catch (error) {
+                        toast(error.message || 'No se pudo borrar el comentario.', { type: 'error' });
+                    }
+                },
+            }, icon('trash', { size: 16 })) : null,
+        );
+    },
+
+    /** Publica en el muro y recarga; los errores 400/429 salen como aviso. */
+    async submit(text) {
+        dom.wallStatus.classList.remove('is-error');
+        try {
+            await ApiClient.addComment({ text, target: viewUser });
+            dom.wallText.value = '';
+            await this.load();
+        } catch (error) {
+            dom.wallStatus.textContent = error.message || 'No se pudo publicar el comentario.';
+            dom.wallStatus.classList.add('is-error');
+        }
+    },
+};
 
 /**
  * Vuelca la cola offline y recarga si había algo pendiente.
@@ -1446,6 +1652,234 @@ function initAdminDialog() {
     return { open };
 }
 
+/**
+ * Amistades: solicitudes en ambos sentidos y amigos confirmados.
+ *
+ * Sigue el patrón de `initAdminDialog`: un solo diálogo, filas construidas con
+ * `el()` (nada de `innerHTML`) e hidratadas con `hydrateIcons`. Toda operación
+ * pasa por `confirmDialog` cuando es destructiva y sus errores (409 de estado
+ * duplicado, 429 del límite horario) salen como toast con el mensaje del
+ * backend, que ya explica qué hacer.
+ */
+function initFriendsDialog() {
+    const dialog = document.getElementById('friends-dialog');
+    const list = document.getElementById('friends-list');
+    const status = document.getElementById('friends-status');
+    const form = document.getElementById('friend-request-form');
+    const input = document.getElementById('friend-request-input');
+    const suggestions = document.getElementById('friend-request-suggestions');
+
+    /** Listado tal y como lo devolvió el servidor; se reutiliza entre acciones. */
+    let data = { friends: [], incoming: [], outgoing: [] };
+
+    const setStatus = (text, isError = false) => {
+        status.textContent = text;
+        status.classList.toggle('is-error', isError);
+    };
+
+    /** Devuelve `true` si la operación salió bien; el error siempre es un toast. */
+    const run = async (action, successMessage) => {
+        try {
+            await action();
+            toast(successMessage, { type: 'success' });
+            return true;
+        } catch (error) {
+            toast(error.message || 'No se ha podido completar la operación.', { type: 'error' });
+            return false;
+        }
+    };
+
+    /** Vuelve a pedir el listado y repinta; lo usan las acciones de las filas. */
+    const refresh = async () => {
+        try {
+            data = await ApiClient.listFriends();
+            renderSections();
+        } catch (error) {
+            setStatus(error.message || 'No se pudieron cargar tus amigos.', true);
+        }
+    };
+
+    function renderSections() {
+        const total = data.friends.length;
+        setStatus(`${total} amigo${total === 1 ? '' : 's'}`
+            + ` · ${data.incoming.length} solicitud${data.incoming.length === 1 ? '' : 'es'} entrante${data.incoming.length === 1 ? '' : 's'}`
+            + (data.outgoing.length ? ` · ${data.outgoing.length} enviada${data.outgoing.length === 1 ? '' : 's'}` : ''));
+
+        const nodes = [];
+        const section = (title, entries, rowFn) => {
+            if (!entries.length && title !== 'Amigos') return;
+            nodes.push(el('h3', { class: 'friends__section', text: title }));
+            if (!entries.length) {
+                nodes.push(el('p', { class: 'modal__hint', text: 'Ninguna por ahora.' }));
+                return;
+            }
+            nodes.push(...entries.map(rowFn));
+        };
+
+        section('Solicitudes recibidas', data.incoming, incomingRow);
+        section('Solicitudes enviadas', data.outgoing, outgoingRow);
+        section('Amigos', data.friends, friendRow);
+
+        list.replaceChildren(...nodes);
+        hydrateIcons(list);
+    }
+
+    const profileLine = (entry) => [
+        `@${entry.username}`,
+        entry.since ? `desde ${entry.since.slice(0, 10)}` : null,
+    ].filter(Boolean).join(' · ');
+
+    const rowShell = (entry) => el('div', { class: 'admin-row', dataset: { user: entry.username } },
+        el('div', { class: 'admin-row__id' },
+            el('span', { class: 'admin-row__name', text: entry.display_name || entry.username }),
+            el('span', { class: 'admin-row__meta', text: profileLine(entry) }),
+        ),
+        el('div', { class: 'admin-row__actions' }),
+    );
+
+    const actionsOf = (row) => row.querySelector('.admin-row__actions');
+
+    function incomingRow(entry) {
+        const row = rowShell(entry);
+        actionsOf(row).append(
+            el('button', {
+                class: 'btn btn--primary btn--sm',
+                type: 'button',
+                text: 'Aceptar',
+                onClick: async () => {
+                    const ok = await run(
+                        () => ApiClient.acceptFriendRequest(entry.username),
+                        `Ahora sois amigos de ${entry.username}.`,
+                    );
+                    if (ok) refresh();
+                },
+            }),
+            el('button', {
+                class: 'btn btn--ghost btn--sm',
+                type: 'button',
+                text: 'Rechazar',
+                onClick: async () => {
+                    const ok = await run(
+                        () => ApiClient.rejectFriendRequest(entry.username),
+                        'Solicitud rechazada.',
+                    );
+                    if (ok) refresh();
+                },
+            }),
+        );
+        return row;
+    }
+
+    function outgoingRow(entry) {
+        const row = rowShell(entry);
+        actionsOf(row).append(
+            el('button', {
+                class: 'btn btn--ghost btn--sm',
+                type: 'button',
+                text: 'Retirar',
+                onClick: async () => {
+                    const confirmed = await confirmDialog({
+                        title: 'Retirar solicitud',
+                        message: `¿Retirar la solicitud enviada a ${entry.username}?`,
+                    });
+                    if (!confirmed) return;
+                    const ok = await run(
+                        () => ApiClient.rejectFriendRequest(entry.username),
+                        'Solicitud retirada.',
+                    );
+                    if (ok) refresh();
+                },
+            }),
+        );
+        return row;
+    }
+
+    function friendRow(entry) {
+        const row = rowShell(entry);
+        actionsOf(row).append(
+            el('button', {
+                class: 'btn btn--ghost btn--sm',
+                type: 'button',
+                text: 'Ver lista',
+                onClick: () => {
+                    dialog.close();
+                    location.href = `dashboard.html?user=${encodeURIComponent(entry.username)}`;
+                },
+            }),
+            el('button', {
+                class: 'btn btn--danger btn--sm',
+                type: 'button',
+                text: 'Dejar de ser amigo',
+                onClick: async () => {
+                    const confirmed = await confirmDialog({
+                        title: 'Eliminar amistad',
+                        message: `¿Dejar de ser amigo de ${entry.username}?`,
+                        confirmLabel: 'Eliminar',
+                        danger: true,
+                    });
+                    if (!confirmed) return;
+                    const ok = await run(
+                        () => ApiClient.removeFriend(entry.username),
+                        `Ya no eres amigo de ${entry.username}.`,
+                    );
+                    if (ok) refresh();
+                },
+            }),
+        );
+        return row;
+    }
+
+    /** Sugerencias de cuentas mientras se teclea el destino de la solicitud. */
+    const suggest = debounce(async () => {
+        const term = input.value.trim();
+        if (!term) {
+            suggestions.replaceChildren();
+            return;
+        }
+        try {
+            const { users } = await ApiClient.searchUsers(term);
+            suggestions.replaceChildren(...users.map((u) => el('option', { value: u.username })));
+        } catch {
+            /* Sin red la sugerencia queda vacía; el envío por nombre sigue funcionando. */
+        }
+    }, 250);
+
+    input.addEventListener('input', suggest);
+
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const target = input.value.trim();
+        if (!target) return;
+        const ok = await run(
+            () => ApiClient.sendFriendRequest(target),
+            `Solicitud enviada a ${target}.`,
+        );
+        if (ok) {
+            input.value = '';
+            suggestions.replaceChildren();
+            refresh();
+        }
+    });
+
+    async function open() {
+        if (dialog.open) return;
+        input.value = '';
+        suggestions.replaceChildren();
+        list.replaceChildren();
+        setStatus('Cargando amigos…');
+        dialog.showModal();
+        await refresh();
+    }
+
+    document.getElementById('friends-close').addEventListener('click', () => dialog.close());
+    // Clic en el fondo: igual que en el resto de diálogos de la app.
+    dialog.addEventListener('click', (event) => {
+        if (event.target === dialog) dialog.close();
+    });
+
+    return { open };
+}
+
 function bindEvents() {
     initThemeToggle(document.getElementById('btn-theme'));
 
@@ -1466,6 +1900,10 @@ function bindEvents() {
     // Solo quien es admin llega a pulsarlo; el backend vuelve a comprobarlo.
     const adminDialog = initAdminDialog();
     dom.adminButton.addEventListener('click', () => adminDialog.open());
+
+    // Amigos: accesible para cualquier sesión, desde el menú de usuario.
+    const friendsDialog = initFriendsDialog();
+    dom.friendsButton.addEventListener('click', () => friendsDialog.open());
 
     /* Ir a la lista de otra cuenta, desde el menú de usuario. El `datalist`
        sugiere mientras se escribe, pero basta con el nombre y Enter: si no
@@ -1537,6 +1975,19 @@ function bindEvents() {
     });
 
     dom.openSearch.addEventListener('click', () => searchModal?.open(dom.title.value.trim()));
+
+    // Publicar en el muro de la lista visitada. El propio muro solo está
+    // visible en lista ajena, así que `viewUser` es siempre la cuenta ajena.
+    dom.wallForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const text = dom.wallText.value.trim();
+        if (!text) {
+            dom.wallStatus.textContent = 'El comentario no puede estar vacío.';
+            dom.wallStatus.classList.add('is-error');
+            return;
+        }
+        wall.submit(text);
+    });
 
     dom.chips.addEventListener('click', (event) => {
         const chip = event.target.closest('.chip');
@@ -1622,6 +2073,12 @@ function boot() {
         dom.statsSection.setAttribute('aria-label', `Resumen de la lista de ${viewUser}`);
         dom.viewBanner.hidden = false;
         dom.viewBannerName.textContent = `@${viewUser}`;
+
+        // El muro es exclusivo de la lista ajena: el propio tiene el panel de
+        // alta y los comentarios sobre tu lista no aportan nada aquí.
+        dom.wall.hidden = false;
+        dom.wallTarget.textContent = viewUser;
+        wall.load();
 
         // Banner y fondo de la cuenta visitada. El perfil llega en paralelo a
         // la lista, y el que tarde no debe retrasar el resto del arranque.

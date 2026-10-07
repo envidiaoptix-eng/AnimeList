@@ -9,7 +9,8 @@ y no se duplica entre blueprints.
 
 Los comentarios son globales: cualquier cuenta autenticada lee y escribe, con
 límite por usuario. `anime_id` es opcional y solo enlaza la ficha; si se borra
-el anime, el comentario se va con él.
+el anime, el comentario se va con él. `target` apunta a la lista sobre la que
+se comenta: el muro de `dashboard.html?user=X` pide `?target=X`.
 
 Los límites se leen de `config` en cada llamada (`config.FRIENDS_...` en vez
 de un import directo) para que los tests puedan rebajarlos sin reimportar el
@@ -103,7 +104,8 @@ def purge_user_social(username):
         save_friends({'friendships': friendships, 'requests': requests})
 
     comments = load_comments()
-    left = [c for c in comments if c.get('user') != username]
+    left = [c for c in comments if c.get('user') != username
+            and c.get('target') != username]
     removed_comments = len(comments) - len(left)
     if removed_comments:
         save_comments(left)
@@ -288,12 +290,16 @@ def _decorate(comment, users, animes):
 @bp.get('/comments')
 @require_auth
 def list_comments(username):
-    """Muro global, con filtros opcionales por autor (`user`) o ficha (`anime`)."""
+    """Muro global, con filtros opcionales por autor (`user`), lista
+    comentada (`target`) o ficha (`anime`)."""
     user_filter = (request.args.get('user') or '').strip()
     anime_filter = (request.args.get('anime') or '').strip()
+    target_filter = (request.args.get('target') or '').strip()
 
     users = load_users()
     if user_filter and user_filter not in users:
+        return jsonify({'error': 'Ese usuario no existe.'}), 404
+    if target_filter and target_filter not in users:
         return jsonify({'error': 'Ese usuario no existe.'}), 404
 
     animes = {a.get('id'): a for a in load_anime()}
@@ -301,6 +307,7 @@ def list_comments(username):
         c for c in load_comments()
         if (not user_filter or c.get('user') == user_filter)
         and (not anime_filter or c.get('anime_id') == anime_filter)
+        and (not target_filter or c.get('target') == target_filter)
     ]
     # ISO en UTC: orden lexicográfico = orden cronológico, sin parsear fechas.
     matching.sort(key=lambda c: c.get('created_at') or '', reverse=True)
@@ -325,6 +332,14 @@ def add_comment(username):
     if anime_id and not find_anime(animes, anime_id):
         return jsonify({'error': 'Ese anime ya no existe.'}), 404
 
+    target = str(data.get('target') or '').strip() or None
+    if target:
+        if target == username:
+            return jsonify({'error': 'No puedes comentar en tu propia lista '
+                                     'desde este muro.'}), 400
+        if target not in load_users():
+            return jsonify({'error': 'Esa cuenta ya no existe.'}), 404
+
     try:
         ratelimit.hit(f'comment-min:{username}', config.COMMENTS_PER_MINUTE,
                       config.SOCIAL_WINDOW_SECONDS)
@@ -337,6 +352,7 @@ def add_comment(username):
         'user': username,
         'text': text,
         'anime_id': anime_id,
+        'target': target,
         'created_at': now_iso(),
     }
     comments = load_comments()

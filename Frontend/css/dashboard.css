@@ -152,12 +152,121 @@
     color: var(--text-muted);
 }
 
+/* Botón (o par de botones) de amistad contra la cuenta visitada. */
+.view-banner__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    align-items: center;
+}
+
 .list-section {
     display: flex;
     flex-direction: column;
     gap: var(--space-4);
     /* Anclas que no queden escondidas bajo la cabecera pegajosa. */
     scroll-margin-top: calc(var(--header-height) + var(--space-4));
+}
+
+/* =============================================================
+   Muro de comentarios de la lista ajena
+   ============================================================= */
+.wall {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-4) var(--space-5) var(--space-5);
+}
+
+.wall__head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.wall__icon {
+    display: inline-flex;
+    color: var(--accent);
+}
+
+.wall__title {
+    font-size: var(--text-base);
+    font-weight: var(--weight-semibold);
+    letter-spacing: var(--tracking-snug);
+}
+
+.wall-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.wall-form__text {
+    width: 100%;
+    resize: vertical;
+    min-height: 2.75em;
+}
+
+.wall-form__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.wall-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    /* El muro no empuja media página: scrollea por su cuenta. */
+    max-height: 320px;
+    overflow-y: auto;
+}
+
+.wall-empty {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+}
+
+.wall-comment {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface-1);
+}
+
+.wall-comment__body {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1 1 240px;
+}
+
+.wall-comment__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    align-items: baseline;
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+}
+
+.wall-comment__author {
+    font-weight: var(--weight-semibold);
+    color: var(--text);
+    font-size: var(--text-sm);
+}
+
+.wall-comment__text {
+    font-size: var(--text-sm);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
 }
 
 /* =============================================================
@@ -845,6 +954,25 @@ body.has-page-bg {
 
 #admin-dialog .modal__search,
 #admin-dialog .modal__status { flex: none; }
+
+/* El diálogo de amigos reutiliza `.admin-users` y `.admin-row` para sus
+   filas: mismo layout, mismo scroll, sin duplicar reglas. */
+#friends-dialog[open] { display: flex; flex-direction: column; }
+
+#friends-dialog .modal__search,
+#friends-dialog .modal__status { flex: none; }
+
+#friends-dialog .modal__search .btn { flex: 0 0 auto; }
+
+/* Títulos de las tres secciones del diálogo (recibidas, enviadas, amigos). */
+.friends__section {
+    font-size: var(--text-xs);
+    font-weight: var(--weight-bold);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wide);
+    color: var(--text-muted);
+    margin-top: var(--space-2);
+}
 
 .admin-users {
     flex: 1 1 auto;

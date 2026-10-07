@@ -315,4 +315,47 @@ export const ApiClient = {
             body: { role },
         });
     },
+
+    /* ---- Social: amistades y comentarios (el backend vuelve a comprobar) ---- */
+
+    listFriends() {
+        return this.request('/friends');
+    },
+
+    sendFriendRequest(username) {
+        return this.request('/friends/request', { method: 'POST', body: { username } });
+    },
+
+    acceptFriendRequest(username) {
+        return this.request('/friends/accept', { method: 'POST', body: { username } });
+    },
+
+    rejectFriendRequest(username) {
+        return this.request('/friends/reject', { method: 'POST', body: { username } });
+    },
+
+    removeFriend(username) {
+        return this.request(`/friends/${encodeURIComponent(username)}`, { method: 'DELETE' });
+    },
+
+    /** Muro de una lista: `target` es la cuenta comentada; sin filtros, el global. */
+    listComments({ target = null, user = null, anime = null } = {}) {
+        const params = new URLSearchParams();
+        if (target) params.set('target', target);
+        if (user) params.set('user', user);
+        if (anime) params.set('anime', anime);
+        const query = params.toString();
+        return this.request(`/comments${query ? `?${query}` : ''}`);
+    },
+
+    addComment({ text, target = null, animeId = null } = {}) {
+        const body = { text };
+        if (target) body.target = target;
+        if (animeId) body.anime_id = animeId;
+        return this.request('/comments', { method: 'POST', body });
+    },
+
+    deleteComment(commentId) {
+        return this.request(`/comments/${encodeURIComponent(commentId)}`, { method: 'DELETE' });
+    },
 };

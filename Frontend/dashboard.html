@@ -61,6 +61,10 @@
                             <i data-icon="user" class="icon--sm"></i> Mi perfil
                         </button>
 
+                        <button class="dropdown__item" id="btn-friends" type="button" role="menuitem">
+                            <i data-icon="user-plus" class="icon--sm"></i> Amigos
+                        </button>
+
                         <!-- Salta a la lista de cualquier cuenta. El `datalist`
                              sugiere mientras se escribe, pero basta con teclear
                              el nombre y dar a Enter. -->
@@ -97,9 +101,34 @@
                 <p class="view-banner__title">Viendo la lista de <span id="view-banner-name">…</span></p>
                 <p class="view-banner__meta" id="view-banner-meta"></p>
             </div>
+            <!-- Acción de amistad según `profile.friendship`: añadir, aceptar,
+                 retirar o dejar de ser amigo. Se pinta desde JS. -->
+            <div class="view-banner__actions" id="view-friend-actions" hidden></div>
             <a class="btn btn--ghost btn--sm" href="dashboard.html">
                 <i data-icon="arrow-left" class="icon--sm"></i> Volver a mi lista
             </a>
+        </section>
+
+        <!-- Muro de comentarios de la cuenta visitada. Solo en lista ajena:
+             el formulario publica con `target` = la cuenta del `?user=`. -->
+        <section class="panel wall" id="wall" hidden aria-labelledby="wall-title">
+            <div class="wall__head">
+                <span class="wall__icon" aria-hidden="true"><i data-icon="message"></i></span>
+                <h2 class="wall__title" id="wall-title">Comentarios</h2>
+                <span class="count" id="wall-count">0</span>
+            </div>
+
+            <form id="wall-form" class="wall-form" novalidate>
+                <label class="sr-only" for="wall-text">Comentar la lista de <span id="wall-target"></span></label>
+                <textarea id="wall-text" class="wall-form__text" rows="2" maxlength="500"
+                          placeholder="Escribe un comentario sobre esta lista…"></textarea>
+                <div class="wall-form__actions">
+                    <button class="btn btn--primary btn--sm" type="submit">Publicar</button>
+                    <p class="form-status" id="wall-status" role="status" aria-live="polite"></p>
+                </div>
+            </form>
+
+            <div id="wall-list" class="wall-list"></div>
         </section>
 
         <section class="stats" id="stats-section" aria-label="Resumen de tu lista">
@@ -317,6 +346,33 @@
         <p class="modal__status" id="admin-status" role="status" aria-live="polite"></p>
 
         <div id="admin-users" class="admin-users"></div>
+    </dialog>
+
+    <!-- Amistades: solicitudes en ambos sentidos y amigos confirmados. El
+         backend vuelve a comprobar cada operación en el momento. -->
+    <dialog id="friends-dialog" class="modal" aria-labelledby="friends-dialog-title">
+        <div class="modal__head">
+            <h2 class="modal__title" id="friends-dialog-title">Amigos</h2>
+            <button class="icon-btn" id="friends-close" type="button" aria-label="Cerrar amigos">
+                <i data-icon="close"></i>
+            </button>
+        </div>
+
+        <form class="modal__search" id="friend-request-form" role="search">
+            <label class="sr-only" for="friend-request-input">Enviar solicitud de amistad</label>
+            <div class="input-search">
+                <i data-icon="user-plus" class="icon--sm"></i>
+                <input id="friend-request-input" type="search" maxlength="24"
+                       placeholder="Enviar solicitud a…" autocomplete="off"
+                       list="friend-request-suggestions">
+            </div>
+            <datalist id="friend-request-suggestions"></datalist>
+            <button class="btn btn--primary btn--sm" type="submit">Enviar</button>
+        </form>
+
+        <p class="modal__status" id="friends-status" role="status" aria-live="polite"></p>
+
+        <div id="friends-list" class="admin-users"></div>
     </dialog>
 
     <dialog id="profile-dialog" class="modal" aria-labelledby="profile-dialog-title">

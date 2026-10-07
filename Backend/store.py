@@ -306,12 +306,14 @@ def normalize_request(record):
 
 
 def normalize_comment(record):
-    """Comentario global. `anime_id` es opcional (enlace a una ficha)."""
+    """Comentario dirigido a una cuenta. `anime_id` es opcional (enlace a una
+    ficha) y `target` es la lista sobre la que se comenta (vacío = muro global)."""
     out = dict(record)
     out.setdefault('id', _new_social_id())
     out.setdefault('user', '')
     out.setdefault('text', '')
     out.setdefault('anime_id', None)
+    out.setdefault('target', '')
     out.setdefault('created_at', now_iso())
     return out
 

@@ -4,7 +4,7 @@
 
 - **Backend:** Flask 3.1.3 + flask-cors, Python 3.14. Las APIs externas se llaman con `urllib` de la stdlib. En producción se añaden `gunicorn` y `firebase-admin` (ver `requirements.txt`).
 - **Frontend:** HTML/JS/CSS estático con módulos ES nativos. Sin build, sin gestor de paquetes.
-- **Datos:** JSON planos en `Backend/` (`users.json`, `anime_list.json`) escritos de forma atómica, o **Firestore** si se activa (ver «Persistencia»).
+- **Datos:** JSON planos en `Backend/` (`users.json`, `anime_list.json`, `friends.json`, `comments.json`) escritos de forma atómica, o **Firestore** si se activa (ver «Persistencia»).
 - **Venv:** `Backend/env/` — recrear con `pip install flask flask-cors`, y `pip install firebase-admin` solo si se va a usar Firestore.
 
 ## Running
@@ -30,6 +30,8 @@ Un módulo por responsabilidad, todos importándose entre sí por ruta de módul
 | `routes_auth.py` | registro, login, perfil, contraseña, búsqueda y perfil público de usuarios |
 | `routes_anime.py` | CRUD de anime, búsqueda, estadísticas |
 | `routes_admin.py` | censo de cuentas, borrar cuenta, resetear contraseña, cambiar rol |
+| `routes_social.py` | amistades (solicitudes, aceptar, retirar, eliminar) y comentarios con `target`; de aquí salen `delete_comments_for_anime` y `purge_user_social`, que importan `routes_anime` y `routes_admin` |
+| `ratelimit.py` | ventanas deslizantes en memoria para las rutas sociales; `reset()` existe solo para tests |
 
 - **Frontend estático:** `GET /` entrega `landing.html` (portada pública) y `GET /<path>` sirve el resto de `Frontend/` con `send_from_directory`, que bloquea el path traversal; `api/*` no pasa por ahí y cae en el 404 JSON. El registro sigue en `index.html` y el panel en `dashboard.html`.
 - **Tokens:** `base64url(payload).base64url(hmac)` con `{"u": usuario, "exp": ts}`, 7 días de validez. La clave vive en `Backend/secret.key` (generada sola, gitignored), salvo que exista `ANIMELIST_SECRET_KEY`, que siempre manda.
@@ -99,6 +101,14 @@ Un módulo por responsabilidad, todos importándose entre sí por ruta de módul
 | DELETE | `/api/admin/users/<target>` | token + admin |
 | POST | `/api/admin/users/<target>/password` | token + admin |
 | PUT | `/api/admin/users/<target>/role` | token + admin |
+| GET | `/api/friends` | token |
+| POST | `/api/friends/request` | token |
+| POST | `/api/friends/accept` | token |
+| POST | `/api/friends/reject` | token |
+| DELETE | `/api/friends/<target>` | token |
+| GET | `/api/comments?target=&user=&anime=` | token |
+| POST | `/api/comments` | token |
+| DELETE | `/api/comments/<id>` | token + autor o admin |
 
 ## Frontend
 
@@ -112,7 +122,7 @@ Un módulo por responsabilidad, todos importándose entre sí por ruta de módul
 | `theme.js` | tema claro/oscuro (se aplica en `<head>` para evitar parpadeo) |
 | `search_modal.js` | diálogo de búsqueda con debounce + autocomplete del título |
 | `profile.js` | diálogo de perfil: recorte en canvas y subida de avatar/banner |
-| `dashboard.js` | render de tarjetas, edición, borrado con deshacer, filtros, stats, modo lista ajena y panel de administración |
+| `dashboard.js` | render de tarjetas, edición, borrado con deshacer, filtros, stats, modo lista ajena, muro de comentarios, diálogo de amigos y panel de administración |
 | `app.js` | registro e inicio de sesión |
 | `landing.js` | portada: iconos y salto al panel si ya hay sesión |
 
@@ -129,6 +139,9 @@ Un módulo por responsabilidad, todos importándose entre sí por ruta de módul
 - **Offline:** sin red, las escrituras se guardan en la caché y entran en una cola que se reintenta en orden al recuperar la conexión (`DataRepository.flushQueue`).
 - **Lista ajena (`dashboard.html?user=X`):** `dashboard.js` deriva `viewUser`/`isOwnList` de la URL. En modo ajeno se ocultan el panel de alta, exportar, buscar y los botones de cada tarjeta (`actionButtons` devuelve `[]`), cambian los textos de estado y vacío, y la cola offline no se toca (`syncQueue` solo con `isOwnList`). Banner y fondo se pintan con el perfil de la cuenta visitada, que llega de `GET /api/users/<target>` en paralelo a la lista; sus imágenes usan `viewImageUrl` con un `Map` propio (`viewImageUrls`), **no** la caché de `profile.js`, que está indexada solo por `kind` y mezclaría fotos de dos cuentas. Un 404 de usuario hace toast + `location.replace('dashboard.html')`: `data_repository.js` relanza el 404 igual que el 401 para no servir la caché propia como si fuera la lista ajena. El buscador de cuentas vive en el menú de usuario (`#view-user-form`, con `datalist` y `ApiClient.searchUsers`); basta con el nombre y Enter.
 - **Administración:** el botón `#btn-admin` del menú solo se muestra si `session.profile.is_admin` (lo decide `renderUser`; el rol viene de `/api/me`, no del token) y abre `#admin-dialog` (`initAdminDialog`): censo de `GET /api/admin/users` filtrado en cliente, con «Ver lista», resetear contraseña —formulario bajo la fila, nunca un segundo modal apilado—, promover/revocar y borrar. Toda operación pasa por `confirmDialog` y sus errores (400 de guardas, 403 de rol caducado) salen como toast con el mensaje del backend. Las filas se construyen con `el()` y se hidratan con `hydrateIcons(list)`.
+- **Amigos:** el botón `#btn-friends` del menú (visible para cualquier sesión) abre `#friends-dialog` (`initFriendsDialog`, mismo patrón que el censo): tres secciones —solicitudes recibidas (Aceptar/Rechazar), enviadas (Retirar) y amigos (Ver lista / Dejar de ser amigo con `confirmDialog`)— más un formulario de envío con `datalist` de `ApiClient.searchUsers`. Tras cada acción se vuelve a pedir `GET /api/friends` y se repinta. Las filas reutilizan las clases `.admin-row`, así que el scroll del diálogo ya está resuelto en CSS.
+- **Banda de lista ajena:** `#view-banner` incluye `#view-friend-actions`, que `renderFriendActions()` pinta según `profile.friendship` (lo trae `GET /api/users/<target>`): `none` → «Añadir amigo», `outgoing` → retirar, `incoming` → aceptar/rechazar, `friend` → eliminar con `confirmDialog`. El backend devuelve el estado nuevo en `response.state`, que se refleja sin volver a pedir el perfil; sin perfil todavía no se pinta nada (el botón nunca adivina).
+- **Muro (`#wall`):** exclusivo de `dashboard.html?user=X`; en lista propia ni se muestra. Publica con `target` = la cuenta visitada (`ApiClient.addComment({ text, target: viewUser })`), se pide con `listComments({ target: viewUser })` y cada fila deja borrar si el comentario es propio o la sesión es admin (el backend vuelve a comprobarlo). Errores 400/404/429 como aviso en `#wall-status`. Un comentario no puede apuntar a la propia cuenta (400 del backend): el muro es de listas ajenas.
 - Todo el contenido dinámico se inserta con `text`/`textContent`, nunca con `innerHTML`. `el()` no ofrece ninguna rama de HTML: `attrs` admite `class`, `text`, `dataset` y `on*`, y nada más. La rama existió y sobraba —no la usaba ni un `callSite`—, pero contradecía esta regla y era un agujero esperando a que alguien lo empujara.
 
 ## Convenciones
@@ -141,8 +154,8 @@ Un módulo por responsabilidad, todos importándose entre sí por ruta de módul
 
 ## Verificación
 
-Antes de tocar nada, y siempre al terminar, los tres tests de `Backend/tests/`.
-Los tres salen con código 1 si algo falla, así que valen como paso de CI:
+Antes de tocar nada, y siempre al terminar, los cuatro tests de `Backend/tests/`.
+Los cuatro salen con código 1 si algo falla, así que valen como paso de CI:
 
 ```powershell
 # contratos entre JS y HTML: ids, selectores, iconos e invariantes
@@ -153,6 +166,9 @@ Backend\env\Scripts\python.exe Backend\tests\smoke_profile.py
 
 # listas ajenas, buscador de cuentas y todo el área admin
 Backend\env\Scripts\python.exe Backend\tests\smoke_admin.py
+
+# amistades, muro de comentarios, limites sociales y cascadas
+Backend\env\Scripts\python.exe Backend\tests\smoke_social.py
 ```
 
 `check_ids.py` cruza cada `getElementById` y cada `querySelector` contra el
@@ -173,9 +189,16 @@ la imagen de perfil de otra cuenta, el rol admin (por `role` y por
 `ANIMELIST_ADMIN`), sus guardas, el reseteo de contraseñas y el borrado de
 cuenta con su lista.
 
+`smoke_social.py` cubre el ciclo de amistad completo (solicitar, aceptar,
+retirar, eliminar, con sus 409 y su límite horario), el muro con `target`
+(publicar, leer filtrado, permisos de borrado) y las cascadas: borrar anime
+se lleva sus comentarios y borrar cuenta purga amistades, solicitudes y
+comentarios. Rebaja los límites de `config` y limpia `ratelimit` a mano.
+
 Ojo: `smoke_profile.py` **redirige `config.USERS_FILE` y `config.ANIME_FILE` a
 un temporal antes de importar la app**, así que no toca `users.json` ni
-`anime_list.json`. Si alguna vez se prueba contra los ficheros de verdad, se
+`anime_list.json`. `smoke_social.py` redirige además `FRIENDS_FILE` y
+`COMMENTS_FILE`. Si alguna vez se prueba contra los ficheros de verdad, se
 contaminan con usuarios de prueba.
 
 Y la sintaxis, que no cubre ningún test:

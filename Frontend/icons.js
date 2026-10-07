@@ -167,6 +167,10 @@ const ICONS = {
         'M12 7.5V12',
         'M12 16h.01',
     ],
+    /* El globo del muro de comentarios, en la banda de lista ajena. */
+    message: [
+        'M21 14a1.5 1.5 0 0 1-1.5 1.5H8l-4.5 4V5.5A1.5 1.5 0 0 1 5 4h14.5A1.5 1.5 0 0 1 21 5.5Z',
+    ],
 
     /* --- Marca --- */
     torii: [
