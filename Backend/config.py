@@ -93,6 +93,23 @@ VALID_FORMATS = ('TV', 'Movie', 'OVA', 'ONA', 'Special', 'Music', 'Unknown')
 MIN_RATING = 1
 MAX_RATING = 10
 
+# Social: amigos y comentarios
+FRIENDS_FILE = os.path.join(BACKEND_DIR, 'friends.json')
+COMMENTS_FILE = os.path.join(BACKEND_DIR, 'comments.json')
+
+FIRESTORE_COLLECTION_FRIENDSHIPS = 'friendships'
+FIRESTORE_COLLECTION_FRIEND_REQUESTS = 'friend_requests'
+FIRESTORE_COLLECTION_COMMENTS = 'comments'
+
+# Límites
+COMMENT_MAX = 500
+COMMENT_MIN = 1
+MAX_OUTGOING_REQUESTS = 30
+SOCIAL_WINDOW_SECONDS = 60
+FRIEND_REQUESTS_PER_HOUR = 20
+COMMENTS_PER_MINUTE = 10
+COMMENTS_PER_DAY = 100
+
 # AniList expone dos rankings estables en `Media.rankings`, distinguidos por
 # `allTime: true` y etiquetados con un literal en ingles dentro de `context`.
 # Esta tabla es la unica fuente de verdad: la usa `external` para traducir y
