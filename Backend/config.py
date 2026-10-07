@@ -9,6 +9,7 @@ import re
 import secrets
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BACKEND_DIR = BASE_DIR
 
 SECRET_KEY_FILE = os.path.join(BASE_DIR, 'secret.key')
 USERS_FILE = os.path.join(BASE_DIR, 'users.json')
