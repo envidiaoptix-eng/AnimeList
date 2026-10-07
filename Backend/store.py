@@ -15,9 +15,10 @@ avisa: es preferible arrancar con datos locales_old a no arrancar.
 import json
 import os
 import tempfile
+import uuid
 from datetime import datetime, timezone
 
-from config import ADMIN_USERNAMES, ANIME_FILE, USERS_FILE
+from config import ADMIN_USERNAMES, ANIME_FILE, COMMENTS_FILE, FRIENDS_FILE, USERS_FILE
 
 _BACKEND = None
 _BACKEND_NAME = 'json'
@@ -274,3 +275,90 @@ def find_anime(animes, anime_id):
         if anime.get('id') == anime_id:
             return anime
     return None
+
+
+# --------------------------------------------------------------------------
+# Social: amistades y comentarios
+# --------------------------------------------------------------------------
+
+def _new_social_id():
+    return str(uuid.uuid4())
+
+
+def normalize_friendship(record):
+    """Amistad: par ordenado de usuarios, guardada una sola vez."""
+    out = dict(record)
+    out.setdefault('id', _new_social_id())
+    out.setdefault('user', '')
+    out.setdefault('friend', '')
+    out.setdefault('created_at', now_iso())
+    return out
+
+
+def normalize_request(record):
+    """Solicitud de amistad pendiente, de `from` a `to`."""
+    out = dict(record)
+    out.setdefault('id', _new_social_id())
+    out.setdefault('from', '')
+    out.setdefault('to', '')
+    out.setdefault('created_at', now_iso())
+    return out
+
+
+def normalize_comment(record):
+    """Comentario global. `anime_id` es opcional (enlace a una ficha)."""
+    out = dict(record)
+    out.setdefault('id', _new_social_id())
+    out.setdefault('user', '')
+    out.setdefault('text', '')
+    out.setdefault('anime_id', None)
+    out.setdefault('created_at', now_iso())
+    return out
+
+
+def load_friends():
+    """Devuelve {'friendships': [...], 'requests': [...]}."""
+    name, adapter = backend()
+    if name == 'firestore':
+        return adapter.load_friends()
+
+    raw = read_json(FRIENDS_FILE, {})
+    if not isinstance(raw, dict):
+        raw = {}
+    friendships = raw.get('friendships')
+    requests = raw.get('requests')
+    return {
+        'friendships': [normalize_friendship(item)
+                        for item in friendships if isinstance(item, dict)]
+        if isinstance(friendships, list) else [],
+        'requests': [normalize_request(item)
+                     for item in requests if isinstance(item, dict)]
+        if isinstance(requests, list) else [],
+    }
+
+
+def save_friends(data):
+    name, adapter = backend()
+    if name == 'firestore':
+        adapter.save_friends(data)
+        return
+    write_json(FRIENDS_FILE, data)
+
+
+def load_comments():
+    name, adapter = backend()
+    if name == 'firestore':
+        return adapter.load_comments()
+
+    raw = read_json(COMMENTS_FILE, [])
+    if not isinstance(raw, list):
+        return []
+    return [normalize_comment(item) for item in raw if isinstance(item, dict)]
+
+
+def save_comments(comments):
+    name, adapter = backend()
+    if name == 'firestore':
+        adapter.save_comments(comments)
+        return
+    write_json(COMMENTS_FILE, comments)

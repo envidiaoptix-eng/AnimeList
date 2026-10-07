@@ -7,6 +7,9 @@ reglas de seguridad, así que pueden cerrarse a cualquier cliente.
 Esquema:
     users/{usuario}      perfil completo, incluido `password_hash` y los blobs
     anime/{id_del_anime} un documento por anime, con `user` como propietario
+    friendships/{id}     amistades confirmadas (par ordenado, id uuid)
+    friend_requests/{id} solicitudes pendientes (de `from` a `to`)
+    comments/{id}        comentarios globales, con `user` como autor
 
 Dos diferencias importantes frente a los ficheros JSON:
 
@@ -26,6 +29,9 @@ from config import (
     FIREBASE_DATABASE_ID,
     FIREBASE_PROJECT_ID,
     FIRESTORE_COLLECTION_ANIME,
+    FIRESTORE_COLLECTION_COMMENTS,
+    FIRESTORE_COLLECTION_FRIENDSHIPS,
+    FIRESTORE_COLLECTION_FRIEND_REQUESTS,
     FIRESTORE_COLLECTION_USERS,
     GOOGLE_APPLICATION_CREDENTIALS,
 )
@@ -184,6 +190,91 @@ class FirestoreStore:
             if existentes.get(anime_id) == limpio:
                 continue
             batch.set(col.document(anime_id), limpio)
+            pending += 1
+            if pending >= _BATCH_LIMIT:
+                batch.commit()
+                batch = self._db.batch()
+                pending = 0
+
+        if pending:
+            batch.commit()
+
+    # ------------------------------------------------------------------
+    # Social: amistades y comentarios
+    # ------------------------------------------------------------------
+
+    def load_friends(self):
+        from store import normalize_friendship, normalize_request
+
+        def collect(collection_name, normalize):
+            records = []
+            for snap in self._db.collection(collection_name).stream():
+                data = snap.to_dict()
+                if not isinstance(data, dict):
+                    continue
+                data.setdefault('id', snap.id)
+                records.append(normalize(data))
+            return records
+
+        return {
+            'friendships': collect(FIRESTORE_COLLECTION_FRIENDSHIPS,
+                                   normalize_friendship),
+            'requests': collect(FIRESTORE_COLLECTION_FRIEND_REQUESTS,
+                                normalize_request),
+        }
+
+    def save_friends(self, data):
+        self._save_records(FIRESTORE_COLLECTION_FRIENDSHIPS,
+                           data.get('friendships') or [])
+        self._save_records(FIRESTORE_COLLECTION_FRIEND_REQUESTS,
+                           data.get('requests') or [])
+
+    def load_comments(self):
+        from store import normalize_comment
+
+        comments = []
+        for snap in self._db.collection(FIRESTORE_COLLECTION_COMMENTS).stream():
+            data = snap.to_dict()
+            if not isinstance(data, dict):
+                continue
+            data.setdefault('id', snap.id)
+            comments.append(normalize_comment(data))
+        return comments
+
+    def save_comments(self, comments):
+        self._save_records(FIRESTORE_COLLECTION_COMMENTS, comments)
+
+    def _save_records(self, collection_name, records):
+        """Diferencia por id: upsert de lo cambiado, borrado de lo sobrante.
+
+        Mismo patrón que `save_anime`, con los ids como documento. Un registro
+        sin id no se escribe: lo genera `load_*` al leer, así que solo puede
+        faltar si alguien escribe a mano por la API.
+        """
+        col = self._db.collection(collection_name)
+        existentes = {snap.id: (snap.to_dict() or {}) for snap in col.stream()}
+        wanted = {}
+        for record in records:
+            record_id = record.get('id')
+            if record_id:
+                wanted[str(record_id)] = record
+
+        batch = self._db.batch()
+        pending = 0
+
+        for doc_id in set(existentes) - set(wanted):
+            batch.delete(col.document(doc_id))
+            pending += 1
+            if pending >= _BATCH_LIMIT:
+                batch.commit()
+                batch = self._db.batch()
+                pending = 0
+
+        for record_id, record in wanted.items():
+            limpio = _clean_for_firestore(record)
+            if existentes.get(record_id) == limpio:
+                continue
+            batch.set(col.document(record_id), limpio)
             pending += 1
             if pending >= _BATCH_LIMIT:
                 batch.commit()

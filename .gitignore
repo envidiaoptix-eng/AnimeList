@@ -9,9 +9,11 @@ env/
 # Nunca debe subirse al repositorio.
 Backend/secret.key
 
-# Datos locales de usuarios y listas
+# Datos locales de usuarios, listas y sociales
 Backend/users.json
 Backend/anime_list.json
+Backend/friends.json
+Backend/comments.json
 Backend/*.corrupto-*
 Backend/.tmp-*
 
