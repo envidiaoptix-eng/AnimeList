@@ -60,6 +60,25 @@
                         <button class="dropdown__item" id="btn-profile" type="button" role="menuitem">
                             <i data-icon="user" class="icon--sm"></i> Mi perfil
                         </button>
+
+                        <!-- Salta a la lista de cualquier cuenta. El `datalist`
+                             sugiere mientras se escribe, pero basta con teclear
+                             el nombre y dar a Enter. -->
+                        <form class="dropdown__form" id="view-user-form" role="search">
+                            <label class="sr-only" for="view-user-input">Ver la lista de un usuario</label>
+                            <div class="input-search">
+                                <i data-icon="search" class="icon--sm"></i>
+                                <input id="view-user-input" type="search" maxlength="24"
+                                       placeholder="Ver lista de…" autocomplete="off"
+                                       list="view-user-suggestions">
+                            </div>
+                            <datalist id="view-user-suggestions"></datalist>
+                        </form>
+
+                        <button class="dropdown__item" id="btn-admin" type="button" role="menuitem" hidden>
+                            <i data-icon="shield" class="icon--sm"></i> Administración
+                        </button>
+
                         <div class="dropdown__sep" role="separator"></div>
                         <button class="dropdown__item dropdown__item--danger" id="btn-logout" type="button" role="menuitem">
                             <i data-icon="log-out" class="icon--sm"></i> Salir
@@ -71,11 +90,23 @@
     </header>
 
     <main id="contenido" class="app-shell app-main">
-        <section class="stats" aria-label="Resumen de tu lista">
+        <!-- Solo se muestra en `dashboard.html?user=X`: avisa de que la lista de
+             abajo es de otra cuenta y que, por tanto, es de solo lectura. -->
+        <section class="view-banner" id="view-banner" hidden aria-label="Viendo la lista de otro usuario">
+            <div class="view-banner__text">
+                <p class="view-banner__title">Viendo la lista de <span id="view-banner-name">…</span></p>
+                <p class="view-banner__meta" id="view-banner-meta"></p>
+            </div>
+            <a class="btn btn--ghost btn--sm" href="dashboard.html">
+                <i data-icon="arrow-left" class="icon--sm"></i> Volver a mi lista
+            </a>
+        </section>
+
+        <section class="stats" id="stats-section" aria-label="Resumen de tu lista">
             <div class="stats__figures">
                 <div class="stat">
                     <span class="stat__value" id="stat-total">–</span>
-                    <span class="stat__label">En tu lista</span>
+                    <span class="stat__label" id="stat-total-label">En tu lista</span>
                 </div>
                 <div class="stat">
                     <span class="stat__value" id="stat-completed">–</span>
@@ -164,7 +195,7 @@
         <section class="list-section" aria-labelledby="list-title">
             <div class="list-toolbar">
                 <h2 class="list-toolbar__title" id="list-title">
-                    Mi lista <span class="count" id="list-count">0</span>
+                    <span id="list-title-label">Mi lista</span> <span class="count" id="list-count">0</span>
                 </h2>
 
                 <div class="list-toolbar__controls">
@@ -263,6 +294,29 @@
             <p class="modal__hint">Flechas ↑ ↓ para moverte · Enter para elegir · Esc para cerrar</p>
             <button id="search-more" class="btn btn--ghost btn--sm" type="button" hidden>Cargar más</button>
         </div>
+    </dialog>
+
+    <!-- Censo de cuentas. Solo lo abre el botón del menú cuando la sesión es
+         admin; el backend vuelve a comprobar el rol en cada petición. -->
+    <dialog id="admin-dialog" class="modal" aria-labelledby="admin-dialog-title">
+        <div class="modal__head">
+            <h2 class="modal__title" id="admin-dialog-title">Administración</h2>
+            <button class="icon-btn" id="admin-close" type="button" aria-label="Cerrar administración">
+                <i data-icon="close"></i>
+            </button>
+        </div>
+
+        <div class="modal__search">
+            <div class="input-search">
+                <i data-icon="search" class="icon--sm"></i>
+                <input id="admin-filter" type="search" autocomplete="off"
+                       placeholder="Filtrar por nombre o usuario" aria-label="Filtrar cuentas">
+            </div>
+        </div>
+
+        <p class="modal__status" id="admin-status" role="status" aria-live="polite"></p>
+
+        <div id="admin-users" class="admin-users"></div>
     </dialog>
 
     <dialog id="profile-dialog" class="modal" aria-labelledby="profile-dialog-title">

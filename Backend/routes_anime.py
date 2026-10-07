@@ -19,7 +19,9 @@ from config import (
 from store import (
     ANIME_FIELDS,
     find_anime,
+    is_admin,
     load_anime,
+    load_users,
     normalize_anime,
     now_iso,
     save_anime,
@@ -209,12 +211,17 @@ def _clean_payload(data):
 
 
 def _load_owned(anime_id, username):
-    """Devuelve (anime, animes, error). El error ya viene con su código HTTP."""
+    """Devuelve (anime, animes, error). El error ya viene con su código HTTP.
+
+    El admin pasa la comprobación de propiedad: puede ver, editar y borrar
+    cualquier lista. Es la única puerta del CRUD, así que no hace falta
+    replicar el rol en cada ruta.
+    """
     animes = load_anime()
     anime = find_anime(animes, anime_id)
     if not anime:
         return None, None, (jsonify({'error': 'Ese anime no existe.'}), 404)
-    if anime.get('user') != username:
+    if anime.get('user') != username and not is_admin(username):
         return None, None, (jsonify({'error': 'Ese anime no está en tu lista.'}), 403)
     return anime, animes, None
 
@@ -222,11 +229,17 @@ def _load_owned(anime_id, username):
 @bp.get('/anime')
 @require_auth
 def list_anime(username):
-    requested = request.args.get('user')
-    if requested and requested != username:
-        return jsonify({'error': 'Solo puedes ver tu propia lista.'}), 403
+    """Devuelve la lista del usuario del token o la de `?user=` (solo lectura).
 
-    animes = [a for a in load_anime() if a.get('user') == username]
+    Cualquier usuario autenticado puede mirar la lista de cualquier otro: la app
+    es para un grupo cerrado de amigos y no hay datos privados en la ficha. Las
+    escrituras siguen pasando por `_load_owned`, que es donde está la puerta.
+    """
+    requested = (request.args.get('user') or '').strip() or username
+    if requested not in load_users():
+        return jsonify({'error': 'Ese usuario no existe.'}), 404
+
+    animes = [a for a in load_anime() if a.get('user') == requested]
     return jsonify(animes)
 
 

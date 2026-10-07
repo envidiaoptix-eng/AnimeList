@@ -70,9 +70,14 @@ const ICONS = {
     ],
 
     /* --- Direccion --- */
-    /* Solo el chevron hacia abajo: es el que usa el desplegable del formulario
-       de alta, y al girar el elemento la forma invertida sale sola. */
+    /* El chevron es el que usa el desplegable del formulario de alta, y al
+       girar el elemento la forma invertida sale sola. `arrow-left` es el de
+       «Volver a mi lista» al mirar la lista de otra cuenta. */
     'chevron-down': ['M6 9l6 6 6-6'],
+    'arrow-left': [
+        'M19 12H5',
+        'M12 19l-7-7 7-7',
+    ],
 
     /* --- Diseno de vista --- */
     'layout-grid': [

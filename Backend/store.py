@@ -17,7 +17,7 @@ import os
 import tempfile
 from datetime import datetime, timezone
 
-from config import ANIME_FILE, USERS_FILE
+from config import ADMIN_USERNAMES, ANIME_FILE, USERS_FILE
 
 _BACKEND = None
 _BACKEND_NAME = 'json'
@@ -120,6 +120,14 @@ def _migrate_user_record(username, value):
         record.setdefault('avatar_url', '')
         record.setdefault('created_at', now_iso())
         return record
+    # Un registro con formato antiguo o corrupto no debe descartarse en silencio:
+    # podría perderse un usuario entero al reescribir. Se deja un aviso y NO se
+    # migra: quien lo lea podrá decidir o, al menos, el log deja huella.
+    try:
+        import logging
+        logging.warning('store._migrate_user_record: registro inválido para %s', username)
+    except Exception:
+        print(f'[store] registro inválido para {username}')
     return None
 
 
@@ -149,6 +157,22 @@ def save_users(users):
     write_json(USERS_FILE, users)
 
 
+def is_admin(username, profile=None):
+    """¿Tiene privilegios de administración?
+
+    Vive aquí (y no en `auth`) porque `public_profile` lo necesita y `store` no
+    importa a nadie: así no se monta un ciclo. El rol NO viaja en el token: se
+    consulta en cada petición, así que promover o revocar un admin surte
+    efecto al instante, sin esperar a que caduquen las sesiones.
+    """
+    if not username:
+        return False
+    if username.lower() in ADMIN_USERNAMES:
+        return True
+    profile = profile if profile is not None else load_users().get(username, {})
+    return profile.get('role') == 'admin'
+
+
 def public_profile(username, profile=None):
     """Vista del perfil sin el hash de contraseña.
 
@@ -166,6 +190,7 @@ def public_profile(username, profile=None):
         'has_banner': bool(profile.get('banner_blob')),
         'has_background': bool(profile.get('background_blob')),
         'created_at': profile.get('created_at'),
+        'is_admin': is_admin(username, profile),
     }
 
 

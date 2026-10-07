@@ -68,6 +68,39 @@ function writableFields(anime) {
     };
 }
 
+/**
+ * Aplica la cola pendiente encima de la lista que viene del servidor.
+ *
+ * Sin esto, `getAnimes` sobrescribía la caché con la copia del servidor y los
+ * cambios aún no enviados desaparecían de la vista (la cola los seguía
+ * teniendo, pero el badge decía «pendiente» sobre una lista que no los
+ * mostraba). Lo que está en cola se toma de la caché, que es donde está la
+ * versión local completa; lo demás lo manda el servidor.
+ */
+function overlayQueue(username, serverList) {
+    const queue = OfflineQueue.read(username);
+    if (!queue.length) return serverList;
+
+    const cache = AnimeCache.read(username);
+    let list = [...serverList];
+
+    for (const entry of queue) {
+        if (entry.kind === 'profile' || !entry.animeId) continue;
+
+        if (entry.method === 'DELETE') {
+            list = list.filter((item) => item.id !== entry.animeId);
+            continue;
+        }
+
+        const local = cache.find((item) => item.id === entry.animeId);
+        if (local) {
+            list = [local, ...list.filter((item) => item.id !== entry.animeId && item.id !== local.id)];
+        }
+    }
+
+    return list;
+}
+
 export const DataRepository = {
     /** Indica si la última escritura quedó pendiente de enviar. */
     isPending(username, animeId) {
@@ -84,11 +117,15 @@ export const DataRepository = {
         if (ApiClient.isAuthenticated()) {
             try {
                 const list = await ApiClient.getAnimes(username);
-                const normalized = list.map(normalizeAnime);
+                const normalized = overlayQueue(username, list.map(normalizeAnime));
                 AnimeCache.write(username, normalized);
                 return normalized;
             } catch (error) {
-                if (error instanceof ApiError && error.status === 401) throw error;
+                // 401 (sesión) y 404 (la cuenta pedida no existe) no son
+                // problemas de red: si se cayeran al caché, ver una lista
+                // inexistente mostraría «Tu lista está vacía» en vez del aviso
+                // de que ese usuario no está.
+                if (error instanceof ApiError && (error.status === 401 || error.status === 404)) throw error;
                 console.warn('Backend no disponible; se usa la copia local.', error.message);
             }
         }
@@ -100,7 +137,7 @@ export const DataRepository = {
         const payload = normalizeAnime({ ...writableFields(anime), user: username });
 
         if (!ApiClient.isAuthenticated()) {
-            return this._storeLocally(payload, username, null);
+            return this._storeLocally(payload, username, { method: 'POST', path: '/anime' });
         }
 
         try {
@@ -117,10 +154,12 @@ export const DataRepository = {
 
     async updateAnime(animeId, fields, username) {
         const current = AnimeCache.read(username).find((entry) => entry.id === animeId);
+        const queueEntry = { method: 'PUT', path: `/anime/${animeId}`, body: fields, animeId };
 
         if (!ApiClient.isAuthenticated()) {
             const merged = normalizeAnime({ ...current, ...fields, id: animeId, pending: true });
             AnimeCache.update(username, merged, 'update');
+            OfflineQueue.push(username, queueEntry);
             return { anime: merged, queued: true };
         }
 
@@ -132,12 +171,7 @@ export const DataRepository = {
             if (error instanceof ApiError && error.status === 0) {
                 const merged = normalizeAnime({ ...current, ...fields, id: animeId, pending: true });
                 AnimeCache.update(username, merged, 'update');
-                OfflineQueue.push(username, {
-                    method: 'PUT',
-                    path: `/anime/${animeId}`,
-                    body: fields,
-                    animeId,
-                });
+                OfflineQueue.push(username, queueEntry);
                 return { anime: merged, queued: true };
             }
             throw error;
@@ -190,7 +224,14 @@ export const DataRepository = {
         }
 
         AnimeCache.update(username, previous, 'add');
-        OfflineQueue.push(username, { method: 'POST', path: '/anime', animeId: previous.id });
+        // Con `body`: sin él el backend responde 400 («El título y la nota son
+        // obligatorios») en cada reintento y la cola se bloqueaba para siempre.
+        OfflineQueue.push(username, {
+            method: 'POST',
+            path: '/anime',
+            body: writableFields(previous),
+            animeId: previous.id,
+        });
         return { restored: true, queued: true };
     },
 
@@ -236,27 +277,39 @@ export const DataRepository = {
     /** Reintenta la cola offline. Devuelve cuántas operaciones se sincronizaron. */
     async flushQueue(username) {
         if (!ApiClient.isAuthenticated() || navigator.onLine === false) {
-            return { synced: 0, remaining: this.queueSize(username) };
+            return { synced: 0, remaining: this.queueSize(username), failed: 0, touchedProfile: false };
         }
 
-        const queued = OfflineQueue.read(username);
-        const { synced, remaining } = await OfflineQueue.flush(username, async (entry) => {
-            await ApiClient.request(entry.path, {
+        const { synced, remaining, failed, syncedEntries } = await OfflineQueue.flush(username, async (entry) => {
+            const response = await ApiClient.request(entry.path, {
                 method: entry.method,
-                body: entry.body,
+                body: entry.body ?? null,
             });
+
+            // El servidor ha creado el anime y le ha dado su id real: las
+            // entradas posteriores que apuntaban al id local provisional
+            // (PUT/DELETE del mismo anime) se reescriben con el id nuevo.
+            const createdId = response?.anime?.id;
+            if (entry.method === 'POST' && createdId && entry.animeId?.startsWith('local_')) {
+                this._remapLocalId(username, entry.animeId, createdId, entry.opId);
+            }
         });
 
         if (synced > 0) await this.getAnimes(username);
 
-        // `flush` reintenta en orden y para en el primer fallo, así que las
-        // `synced` primeras son exactamente las que salieron. Las entradas de
-        // perfil no se ven en `getAnimes`: se pide el perfil aparte para que la
-        // cabecera se repinta con el nombre nuevo.
-        const touchedProfile = queued.slice(0, synced).some((entry) => entry.kind === 'profile');
+        // Las entradas de perfil no se ven en `getAnimes`: se pide el perfil
+        // aparte para que la cabecera se repinte con el nombre nuevo.
+        const touchedProfile = syncedEntries.some((entry) => entry.kind === 'profile');
         if (touchedProfile) await ApiClient.getProfile().catch(() => null);
 
-        return { synced, remaining, touchedProfile };
+        return { synced, remaining, failed, touchedProfile };
+    },
+
+    /** Sustituye el id local provisional por el del servidor en caché y cola. */
+    _remapLocalId(username, oldId, newId, exceptOpId) {
+        OfflineQueue.remapId(username, oldId, newId, exceptOpId);
+        const list = AnimeCache.read(username).map((entry) => (entry.id === oldId ? { ...entry, id: newId } : entry));
+        AnimeCache.write(username, list);
     },
 
     _storeLocally(payload, username, queueEntry) {

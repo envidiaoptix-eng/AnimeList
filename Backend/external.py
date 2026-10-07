@@ -147,7 +147,13 @@ def _cache_get(key):
 
 def _cache_set(key, value):
     with _cache_lock:
-        if len(_cache) >= CACHE_MAX_ENTRIES:
+        now = time.time()
+        # Limpia las entradas que ya han expirado para ahorrar memoria y para
+        # poder aplicar la política de tamaño con entradas todavía vivas.
+        for k, (expires_at, _) in list(_cache.items()):
+            if expires_at < now:
+                _cache.pop(k, None)
+        while len(_cache) >= CACHE_MAX_ENTRIES:
             oldest = min(_cache.items(), key=lambda item: item[1][0])[0]
             _cache.pop(oldest, None)
         _cache[key] = (time.time() + CACHE_TTL_SECONDS, value)
@@ -170,6 +176,11 @@ def _search_logs_for(username):
     if log is None:
         log = deque()
         _search_log[username] = log
+    # Podado silencioso de usuarios que ya no hacen búsquedas para evitar que
+    # el dict de logs crezca indefinidamente (un bug menor de memoria).
+    # No hay necesidad de borrar si tiene entradas recientes (el `popleft` en
+    # `check_rate_limit` ya lo hace), pero al crear un nuevo usuario nunca
+    # se borraban los antiguos.
     return log
 
 

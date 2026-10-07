@@ -118,6 +118,40 @@
     padding-block: var(--space-6) var(--space-16);
 }
 
+/* Banda superior al mirar `dashboard.html?user=X`: avisa de que la lista de
+   abajo es de otra cuenta y, por tanto, de solo lectura. */
+.view-banner {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-4);
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-4) var(--space-5);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--radius-lg);
+    background: var(--surface-1);
+    box-shadow: var(--shadow-sm);
+}
+
+.view-banner__text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.view-banner__title {
+    font-size: var(--text-base);
+    font-weight: var(--weight-semibold);
+    overflow-wrap: anywhere;
+}
+
+.view-banner__meta {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+}
+
 .list-section {
     display: flex;
     flex-direction: column;
@@ -800,3 +834,65 @@ body.has-page-bg {
    `--space-6` y el pie no traia nada, asi que los botones quedaban pegados al
    borde del dialogo. */
 #profile-dialog .modal__actions { flex: none; padding: 0 var(--space-6) var(--space-6); }
+
+/* =============================================================
+   Dialogo de administracion: censo con scroll
+   =============================================================
+   Mismo reparto que el de perfil: `.modal` recorta con `overflow: hidden`, y
+   sin un hijo que scrollee el censo quedaria inalcanzable en cuanto crezca.
+   Cabecera, filtro y estado no se mueven; solo baja la lista de cuentas. */
+#admin-dialog[open] { display: flex; flex-direction: column; }
+
+#admin-dialog .modal__search,
+#admin-dialog .modal__status { flex: none; }
+
+.admin-users {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-5) var(--space-5);
+}
+
+.admin-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface-1);
+}
+
+.admin-row__id {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.admin-row__name {
+    font-weight: var(--weight-semibold);
+    overflow-wrap: anywhere;
+}
+
+.admin-row__meta { font-size: var(--text-xs); color: var(--text-muted); }
+.admin-row__actions { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+
+/* La contraseña se edita en una fila propia bajo los botones, no en un
+   segundo diálogo: así nunca quedan dos modales apilados. */
+.admin-row__pw {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    width: 100%;
+}
+
+.admin-row__pw input {
+    flex: 1 1 200px;
+    min-width: 0;
+}

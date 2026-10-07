@@ -199,9 +199,12 @@ export function initSearchModal({ onPick } = {}) {
             if (error instanceof ApiError) {
                 setStatus(error.message, true);
                 if (!append) results.replaceChildren();
-                return;
+            } else {
+                setStatus('Error inesperado al buscar.', true);
+                if (!append) results.replaceChildren();
             }
-            setStatus('Error inesperado al buscar.', true);
+            if (append && state.page > 1) state.page -= 1;
+            return;
         }
     }
 
@@ -259,6 +262,7 @@ export function initSearchModal({ onPick } = {}) {
 
     return {
         open(term = '') {
+            if (dialog.open) return;
             adultBox.checked = Settings.get('showAdult');
             input.value = term;
             reset();

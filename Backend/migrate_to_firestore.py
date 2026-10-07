@@ -97,7 +97,12 @@ def main():
     animes_nuevos = [a for a in animes if a.get('id') not in ids_remotos]
     print(f'Escribiendo {len(animes_nuevos)} anime(s)...')
     if ids_locales & ids_remotos:
-        remoto.save_anime(remotos_animes + animes_nuevos)
+        if args.replace:
+            print(f'Sobrescribiendo {len(animes)} anime(s) (replace activo)...')
+            remoto.save_anime(animes)
+        else:
+            print(f'Escribiendo {len(animes_nuevos)} anime(s) (añadiendo; chocan {len(ids_locales & ids_remotos)})...')
+            remoto.save_anime(remotos_animes + animes_nuevos)
     else:
         remoto.save_anime(animes)
 

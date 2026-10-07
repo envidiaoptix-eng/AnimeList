@@ -119,6 +119,17 @@ IMAGE_KINDS = {'avatar', 'banner', 'background'}
 
 DEBUG = os.environ.get('ANIMELIST_DEBUG', '0') == '1'
 
+# ---- Cuentas de administración ----
+# Forma estable de designar al admin sin editar ficheros a mano: la misma
+# variable sirve en local y en Render. Admite varios separados por comas y la
+# comparación no distingue mayúsculas. Los promovidos desde la UI guardan
+# `"role": "admin"` en su registro; admin efectivo = esta lista ∪ ese campo.
+ADMIN_USERNAMES = {
+    name.strip().lower()
+    for name in os.environ.get('ANIMELIST_ADMIN', '').split(',')
+    if name.strip()
+}
+
 # ---- Firebase Firestore (opcional) ----
 # La app arranca siempre en modo JSON. Solo si hay credenciales de la cuenta de
 # servicio y `ANIMELIST_USE_FIRESTORE=1` se commuta a Firestore; si algo falla

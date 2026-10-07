@@ -20,9 +20,16 @@ const session = ApiClient.getSession();
 
 // La redirección es asíncrona: el módulo sigue evaluándose, así que el resto del
 // código debe tolerar `session === null` en vez de leer session.username a ciegas.
-if (!session) location.replace('index.html');
+if (!session) location.replace('login.html');
 
 const username = session?.username ?? '';
+
+/* Cuya lista se pinta: la propia, salvo que la URL traiga `?user=amigo`.
+   En ese caso la pantalla entra en modo solo lectura: sin alta, sin editar y
+   sin cola offline, porque esos datos no son del visitante. */
+const queryUser = (new URLSearchParams(location.search).get('user') || '').trim();
+const viewUser = queryUser || username;
+const isOwnList = viewUser === username;
 
 const STATUSES = ['Pendiente', 'Viendo', 'Completado', 'Abandonado'];
 
@@ -86,6 +93,7 @@ const dom = {
     sortBy: document.getElementById('sort-by'),
     viewSwitch: document.getElementById('view-switch'),
     listCount: document.getElementById('list-count'),
+    listTitleLabel: document.getElementById('list-title-label'),
     grid: document.getElementById('contenedor-animes'),
     listStatus: document.getElementById('list-status'),
     empty: document.getElementById('empty-state'),
@@ -93,6 +101,16 @@ const dom = {
     emptyText: document.getElementById('empty-text'),
     emptyAction: document.getElementById('empty-action'),
     export: document.getElementById('btn-export'),
+    statsSection: document.getElementById('stats-section'),
+    statTotalLabel: document.getElementById('stat-total-label'),
+
+    viewBanner: document.getElementById('view-banner'),
+    viewBannerName: document.getElementById('view-banner-name'),
+    viewBannerMeta: document.getElementById('view-banner-meta'),
+    viewForm: document.getElementById('view-user-form'),
+    viewInput: document.getElementById('view-user-input'),
+    viewSuggestions: document.getElementById('view-user-suggestions'),
+    adminButton: document.getElementById('btn-admin'),
 };
 
 const state = {
@@ -105,6 +123,8 @@ const state = {
     textFilter: Settings.get('textFilter') || '',
     /** Metadatos de la ficha elegida en el buscador, para el próximo alta. */
     picked: {},
+    /** Perfil de la cuenta visitada; solo existe en modo lista ajena. */
+    viewProfile: null,
 };
 
 const searchModal = initSearchModal({ onPick: fillForm });
@@ -119,22 +139,43 @@ const searchModal = initSearchModal({ onPick: fillForm });
  * Se relanza tras cada cambio del perfil, así que se apoya solo en
  * `session.profile` en lugar de guardar una copia aparte.
  *
+ * En cadena: el arranque lanza una pintada con el perfil cacheado y el
+ * refresco de `/api/me` otra con el perfil fresco, y sin ordenar la más
+ * vieja podía terminar la última y dejar la cabecera obsoleta (además de
+ * pedir el blob dos veces). La última en llegar pinta al final.
+ *
  * El `<img>` y la inicial de reserva son los mismos dos nodos siempre, y solo
  * cambia cuál se ve. Antes se sustituían entre sí, lo que obligaba a
  * rebuscar el elemento en cada repintado y a vigilar que el sustituto
  * estuviera en el DOM.
  */
-async function renderUser() {
+let renderChain = Promise.resolve();
+
+function renderUser() {
+    renderChain = renderChain.then(
+        () => paintUser().catch((error) => console.warn('No se pudo pintar la cabecera:', error)),
+    );
+    return renderChain;
+}
+
+async function paintUser() {
     const profile = session.profile;
     const name = profile?.display_name || username;
     const initial = name.trim().charAt(0).toUpperCase() || '?';
 
+    // El menú y el avatar son siempre de la sesión: son los que abren «Mi
+    // perfil» y «Salir». Banner y fondo, en cambio, son los de la cuenta cuya
+    // lista se está mirando, que es lo que da contexto a la pantalla.
     dom.menuName.textContent = name;
     dom.menuUsername.textContent = `@${username}`;
     dom.avatarFallback.textContent = initial;
+    // El botón de administración se decide con el perfil de la sesión, que es
+    // lo que trae `is_admin` de `/api/me` (el token no lleva el rol).
+    dom.adminButton.hidden = !Boolean(session.profile?.is_admin);
 
-    await paintBanner(profile);
-    await paintPageBackground(profile);
+    const pageProfile = isOwnList ? profile : state.viewProfile;
+    await paintBanner(pageProfile);
+    await paintPageBackground(pageProfile);
 
     // El `<img>` y la inicial son los mismos dos nodos de siempre, y solo cambia
     // cuál se ve. `#avatar-fallback` no se ocultaba en ningún sitio, así que con
@@ -168,6 +209,44 @@ async function renderUser() {
 const cssUrl = (value) => `"${value.replace(/[\\"]/g, '\\$&')}"`;
 
 /**
+ * Object URL de las imágenes de una cuenta ajena.
+ *
+ * La propia pasa por la caché de `profile.js`, que vive toda la sesión y es
+ * la que usa también el diálogo de perfil. La de otro usuario se pide aquí y
+ * se guarda aparte: si compartieran la caché, mirar el banner de un amigo y
+ * abrir después «Mi perfil» mostraría la foto de él como si fuera la tuya.
+ */
+const viewImageUrls = new Map();
+
+async function viewImageUrl(kind, profile) {
+    if (!profile) return '';
+
+    const external = profile[`${kind}_url`];
+    if (external) return external;
+    if (!profile[`has_${kind}`]) return '';
+
+    try {
+        const blob = await ApiClient.fetchProfileImage(kind, profile.username);
+        const url = URL.createObjectURL(blob);
+        const previous = viewImageUrls.get(kind);
+        if (previous) URL.revokeObjectURL(previous);
+        viewImageUrls.set(kind, url);
+        return url;
+    } catch {
+        // Sin esa imagen la página se queda con el fondo del tema.
+        return '';
+    }
+}
+
+function releaseViewImageUrls() {
+    for (const url of viewImageUrls.values()) URL.revokeObjectURL(url);
+    viewImageUrls.clear();
+}
+
+/** Imagen de la página: la de la sesión, o la de la cuenta visitada. */
+const pageImageUrl = (kind, profile) => (isOwnList ? profileImageUrl(kind, profile) : viewImageUrl(kind, profile));
+
+/**
  * Pinta el fondo de pagina del usuario.
  *
  * Va como variable en `:root` en vez de como `background-image` directo para no
@@ -179,7 +258,7 @@ const cssUrl = (value) => `"${value.replace(/[\\"]/g, '\\$&')}"`;
 async function paintPageBackground(profile) {
     let url = '';
     try {
-        url = await profileImageUrl('background', profile);
+        url = await pageImageUrl('background', profile);
     } catch {
         // Sin el fichero no hay objeto que pintar: se deja el fondo del tema.
         url = '';
@@ -197,7 +276,7 @@ async function paintPageBackground(profile) {
 async function paintBanner(profile) {
     let url = '';
     try {
-        url = await profileImageUrl('banner', profile);
+        url = await pageImageUrl('banner', profile);
     } catch {
         url = '';
     }
@@ -242,35 +321,93 @@ async function load() {
     );
 
     try {
-        state.all = await DataRepository.getAnimes(username);
+        state.all = await DataRepository.getAnimes(viewUser);
         applyView();
         renderStats();
-        await syncQueue();
+        renderViewBanner();
+        // La cola offline es de la sesión, no de la cuenta visitada: volcarla
+        // mientras se mira una lista ajena escribiría sobre la lista propia.
+        if (isOwnList) await syncQueue();
     } catch (error) {
         dom.grid.replaceChildren();
+        if (!isOwnList && error?.status === 404) {
+            toast(`No existe ningún usuario llamado “${viewUser}”.`, { type: 'error' });
+            location.replace('dashboard.html');
+            return;
+        }
         toast(error.message || 'No se pudo cargar tu lista.', { type: 'error' });
     }
 }
 
-/** Vuelca la cola offline y recarga si había algo pendiente. */
+/**
+ * Rellena la banda superior cuando se mira la lista de otra cuenta.
+ *
+ * El contador sale de `state.all`, que es lo que de verdad se está pintando;
+ * el nombre visible puede llegar después (el perfil se pide en paralelo), así
+ * que esta función se vuelve a llamar cuando cae.
+ */
+function renderViewBanner() {
+    if (isOwnList) return;
+
+    const profile = state.viewProfile;
+    const displayName = profile?.display_name;
+    dom.viewBannerName.textContent = displayName && displayName !== viewUser
+        ? `${displayName} (@${viewUser})`
+        : `@${viewUser}`;
+    dom.viewBannerMeta.textContent = `${state.all.length} anime${state.all.length === 1 ? '' : 's'} en su lista`;
+    dom.viewBanner.hidden = false;
+}
+
+/**
+ * Vuelca la cola offline y recarga si había algo pendiente.
+ *
+ * Con guarda de reentrada: el arranque y la recuperación de red la lanzan a la
+ * vez, y dos vuelcos simultáneos enviarían las mismas operaciones dos veces
+ * (el lock de `OfflineQueue.flush` ya no las duplica, pero el repintado y el
+ * toast se dispararían igualmente dos veces).
+ */
+let syncing = false;
+
 async function syncQueue() {
-    const { synced, touchedProfile } = await DataRepository.flushQueue(username);
-    if (!synced) return;
+    if (syncing) return;
+    syncing = true;
 
-    state.all = await DataRepository.getAnimes(username);
-    applyView();
-    renderStats();
+    try {
+        const { synced, failed, touchedProfile } = await DataRepository.flushQueue(username);
 
-    // La cola también puede llevar el nombre visible. Si salió, la cabecera
-    // sigue enseñando el viejo hasta que se recargue la página.
-    if (touchedProfile) {
-        session.profile = await ApiClient.getProfile().catch(() => session.profile);
-        await renderUser();
+        // Una operación rechazada de forma definitiva por el servidor ya no se
+        // reintentará: se avisa, no se pierde en silencio.
+        if (failed > 0) {
+            toast(
+                `${failed} cambio${failed === 1 ? '' : 's'} sin conexión no se pudo enviar y se descartó.`,
+                { type: 'error' },
+            );
+        }
+
+        if (!synced) return;
+
+        state.all = await DataRepository.getAnimes(username);
+        applyView();
+        renderStats();
+
+        // La cola también puede llevar el nombre visible. Si salió, la cabecera
+        // sigue enseñando el viejo hasta que se recargue la página.
+        if (touchedProfile) {
+            session.profile = await ApiClient.getProfile().catch(() => session.profile);
+            await renderUser();
+        }
+
+        toast(`${synced} cambio${synced === 1 ? '' : 's'} sincronizado${synced === 1 ? '' : 's'}.`, {
+            type: 'success',
+        });
+    } catch (error) {
+        // Antes este `await` suelto (en el `online` de abajo) dejaba un
+        // rechazo no manejado en la consola sin decirle nada al usuario.
+        console.warn('No se pudo sincronizar la cola offline:', error);
+        toast(error.message || 'No se pudo sincronizar la cola pendiente.', { type: 'error' });
+    } finally {
+        syncing = false;
     }
-
-    toast(`${synced} cambio${synced === 1 ? '' : 's'} sincronizado${synced === 1 ? '' : 's'}.`, {
-        type: 'success',
-    });
 }
 
 /* ---------------------------------------------------------------- */
@@ -487,7 +624,7 @@ function actionsRow(anime) {
     return el('div', { class: 'card__foot' },
         el('span', { class: 'card__foot-left' },
             ratingNode(anime),
-            DataRepository.isPending(username, anime.id)
+            isOwnList && DataRepository.isPending(username, anime.id)
                 ? el('span', { class: 'badge badge--pending', text: 'pendiente' })
                 : null,
         ),
@@ -562,7 +699,7 @@ function listRow(anime) {
         if (anime.anilist_id || anime.kitsu_id) aside.appendChild(externalLink(anime, 'row__link'));
         aside.appendChild(ratingNode(anime, { withSuffix: false }));
 
-        if (DataRepository.isPending(username, anime.id)) {
+        if (isOwnList && DataRepository.isPending(username, anime.id)) {
             aside.appendChild(el('span', { class: 'badge badge--pending', text: 'pendiente' }));
         }
 
@@ -576,6 +713,11 @@ function listRow(anime) {
 
 /** Los dos botones de acción de la ficha, sueltos para reusar en ambos modos. */
 function actionButtons(anime) {
+    // En lista ajena no hay nada que hacer: editar y borrar son de la dueña
+    // de la lista (o del admin, que entra por su propio camino en la
+    // administración). Sin botones no hay formulario de edición que abrir.
+    if (!isOwnList) return [];
+
     const button = (action, glyph, label, extra) => el('button', {
         class: `icon-btn ${extra}`.trim(),
         type: 'button',
@@ -782,7 +924,10 @@ function applyView() {
         // vista, o entrar o salir del modo edición.
         const editing = state.editingId === anime.id;
         const wrongMode = current.classList.contains('card') !== !isList;
-        const wrongEditing = current.classList.contains('card--editing') !== editing;
+        // La clase de edición depende del modo: en lista es `row--editing`.
+        // Comprobando siempre `card--editing`, el formulario de la vista lista
+        // se reconstruía en cada repintado y se perdía lo tecleado.
+        const wrongEditing = current.classList.contains(isList ? 'row--editing' : 'card--editing') !== editing;
 
         return wrongMode || wrongEditing ? build(anime) : current;
     });
@@ -801,10 +946,14 @@ function applyView() {
     dom.empty.hidden = state.shown.length > 0;
     if (state.shown.length === 0) {
         const hasAny = state.all.length > 0;
-        dom.emptyTitle.textContent = hasAny ? 'Nada coincide con el filtro' : 'Tu lista está vacía';
+        dom.emptyTitle.textContent = hasAny
+            ? 'Nada coincide con el filtro'
+            : (isOwnList ? 'Tu lista está vacía' : `La lista de ${viewUser} está vacía`);
         dom.emptyText.textContent = hasAny
             ? 'Prueba con otro estado o borra el texto de búsqueda.'
-            : 'Busca un anime, revisa la nota y guárdalo.';
+            : (isOwnList
+                ? 'Busca un anime, revisa la nota y guárdalo.'
+                : 'Todavía no ha guardado ningún anime.');
     }
 
     announce();
@@ -821,13 +970,17 @@ function announce() {
     const shown = state.shown.length;
 
     if (state.all.length === 0) {
-        dom.listStatus.textContent = 'Tu lista está vacía.';
+        dom.listStatus.textContent = isOwnList
+            ? 'Tu lista está vacía.'
+            : `La lista de ${viewUser} está vacía.`;
     } else if (shown === 0) {
         dom.listStatus.textContent = 'Ningún anime coincide con el filtro.';
     } else if (shown !== state.all.length) {
         dom.listStatus.textContent = `${shown} de ${state.all.length} animes.`;
     } else {
-        dom.listStatus.textContent = `${shown} anime${shown === 1 ? '' : 's'} en tu lista.`;
+        dom.listStatus.textContent = isOwnList
+            ? `${shown} anime${shown === 1 ? '' : 's'} en tu lista.`
+            : `${shown} anime${shown === 1 ? '' : 's'} en la lista de ${viewUser}.`;
     }
 }
 
@@ -1086,23 +1239,275 @@ function initUserMenu() {
     });
 }
 
+/**
+ * Censo de cuentas: ver su lista, resetear contraseñas, cambiar el rol y borrar.
+ *
+ * Solo el botón del menú lo abre cuando la sesión es admin, pero el rol no
+ * viaja en el token: cada petición de aquí abajo vuelve a comprobarlo el
+ * backend, así que si los poderes caducan a mitad de sesión la operación
+ * devuelve 403 y el aviso lo cuenta. Ninguna fila es editable con `innerHTML`:
+ * todo se construye con `el()`.
+ */
+function initAdminDialog() {
+    const dialog = document.getElementById('admin-dialog');
+    const list = document.getElementById('admin-users');
+    const status = document.getElementById('admin-status');
+    const filter = document.getElementById('admin-filter');
+
+    /** Censo tal y como lo devolvió el servidor; se filtra en cliente. */
+    let users = [];
+
+    const setStatus = (text, isError = false) => {
+        status.textContent = text;
+        status.classList.toggle('is-error', isError);
+    };
+
+    /** Devuelve `true` si la operación salió bien; el error siempre es un toast. */
+    const run = async (action, successMessage) => {
+        try {
+            await action();
+            toast(successMessage, { type: 'success' });
+            return true;
+        } catch (error) {
+            toast(error.message || 'No se ha podido completar la operación.', { type: 'error' });
+            return false;
+        }
+    };
+
+    function renderRows() {
+        const term = filter.value.trim().toLowerCase();
+        const visible = users.filter((account) => !term
+            || account.username.toLowerCase().includes(term)
+            || String(account.display_name || '').toLowerCase().includes(term));
+
+        setStatus(`${visible.length} de ${users.length} cuenta${users.length === 1 ? '' : 's'}`);
+
+        if (!visible.length) {
+            list.replaceChildren(el('p', {
+                class: 'modal__hint',
+                text: users.length ? 'Ninguna cuenta coincide con el filtro.' : 'Todavía no hay ninguna cuenta.',
+            }));
+            return;
+        }
+
+        list.replaceChildren(...visible.map(rowNode));
+        hydrateIcons(list);
+    }
+
+    function rowNode(account) {
+        const isMe = account.username === username;
+
+        /* Contraseña: el formulario va debajo de la fila en vez de en un
+           segundo diálogo; así nunca hay dos modales apilados. */
+        const passwordForm = el('form', { class: 'admin-row__pw', hidden: true },
+            el('input', {
+                type: 'password',
+                minlength: '6',
+                maxlength: '128',
+                required: true,
+                autocomplete: 'new-password',
+                placeholder: 'Nueva contraseña (mínimo 6)',
+                'aria-label': `Nueva contraseña de ${account.username}`,
+            }),
+            el('button', { class: 'btn btn--primary btn--sm', type: 'submit', text: 'Guardar' }),
+            el('button', {
+                class: 'btn btn--ghost btn--sm',
+                type: 'button',
+                text: 'Cancelar',
+                onClick: () => {
+                    passwordForm.hidden = true;
+                    passwordForm.reset();
+                },
+            }),
+        );
+
+        passwordForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const value = passwordForm.querySelector('input').value;
+            const ok = await run(
+                () => ApiClient.adminResetPassword(account.username, value),
+                `Contraseña de ${account.username} actualizada.`,
+            );
+            if (ok) {
+                passwordForm.hidden = true;
+                passwordForm.reset();
+            }
+        });
+
+        const meta = [
+            `@${account.username}`,
+            `${account.anime_count} anime${account.anime_count === 1 ? '' : 's'}`,
+            account.is_admin ? 'admin' : null,
+        ].filter(Boolean).join(' · ');
+
+        return el('div', { class: 'admin-row', dataset: { user: account.username } },
+            el('div', { class: 'admin-row__id' },
+                el('span', { class: 'admin-row__name', text: account.display_name || account.username }),
+                el('span', { class: 'admin-row__meta', text: meta }),
+            ),
+            el('div', { class: 'admin-row__actions' },
+                el('button', {
+                    class: 'btn btn--ghost btn--sm',
+                    type: 'button',
+                    text: 'Ver lista',
+                    onClick: () => {
+                        location.href = `dashboard.html?user=${encodeURIComponent(account.username)}`;
+                    },
+                }),
+                el('button', {
+                    class: 'btn btn--ghost btn--sm',
+                    type: 'button',
+                    text: 'Contraseña',
+                    onClick: () => {
+                        passwordForm.hidden = false;
+                        passwordForm.querySelector('input').focus();
+                    },
+                }),
+                // Borrarse a sí mismo o bajarse el rol acaba siempre en 400 del
+                // backend; esconderlo evita el viaje y el error.
+                isMe ? null : el('button', {
+                    class: 'btn btn--ghost btn--sm',
+                    type: 'button',
+                    text: account.is_admin ? 'Quitar admin' : 'Dar admin',
+                    onClick: async () => {
+                        const next = account.is_admin ? 'user' : 'admin';
+                        const confirmed = await confirmDialog({
+                            title: next === 'admin' ? 'Dar administración' : 'Quitar administración',
+                            message: next === 'admin'
+                                ? `¿Dar poderes de administración a ${account.username}?`
+                                : `¿Quitar los poderes de administración a ${account.username}?`,
+                            danger: next === 'user',
+                        });
+                        if (!confirmed) return;
+
+                        const ok = await run(
+                            () => ApiClient.adminSetRole(account.username, next),
+                            `Rol de ${account.username} actualizado.`,
+                        );
+                        if (ok) {
+                            account.is_admin = next === 'admin';
+                            renderRows();
+                        }
+                    },
+                }),
+                isMe ? null : el('button', {
+                    class: 'btn btn--danger btn--sm',
+                    type: 'button',
+                    text: 'Borrar',
+                    onClick: async () => {
+                        const confirmed = await confirmDialog({
+                            title: 'Borrar cuenta',
+                            message: `Se borrarán la cuenta de ${account.username} y sus ${account.anime_count} animes. No se puede deshacer.`,
+                            confirmLabel: 'Borrar',
+                            danger: true,
+                        });
+                        if (!confirmed) return;
+
+                        const ok = await run(
+                            () => ApiClient.adminDeleteUser(account.username),
+                            `Cuenta de ${account.username} borrada.`,
+                        );
+                        if (ok) {
+                            users = users.filter((entry) => entry.username !== account.username);
+                            renderRows();
+                        }
+                    },
+                }),
+            ),
+            passwordForm,
+        );
+    }
+
+    async function open() {
+        if (dialog.open) return;
+        filter.value = '';
+        list.replaceChildren();
+        setStatus('Cargando cuentas…');
+        dialog.showModal();
+
+        try {
+            const data = await ApiClient.adminListUsers();
+            users = data.users || [];
+            renderRows();
+        } catch (error) {
+            setStatus(error.message || 'No se pudo cargar el censo.', true);
+        }
+    }
+
+    filter.addEventListener('input', () => {
+        if (users.length) renderRows();
+    });
+    document.getElementById('admin-close').addEventListener('click', () => dialog.close());
+    // Clic en el fondo: igual que en el resto de diálogos de la app.
+    dialog.addEventListener('click', (event) => {
+        if (event.target === dialog) dialog.close();
+    });
+
+    return { open };
+}
+
 function bindEvents() {
     initThemeToggle(document.getElementById('btn-theme'));
 
     initProfileDialog({
         paint: async (profile) => {
-            session.profile = profile;
+            // Guardar sin conexión devuelve un perfil parcial (solo los campos
+            // que cambian, sin `has_avatar`/`has_banner`/`has_background`) o
+            // `null` si no se pudo leer el perfil al abrir el diálogo. Pintarlo
+            // tal cual borraba el avatar, el banner y el fondo de la cabecera
+            // hasta recargar: se mezcla sobre lo que ya hay y `null` no toca nada.
+            if (profile) session.profile = { ...session.profile, ...profile };
             await renderUser();
         },
     });
 
     initUserMenu();
 
+    // Solo quien es admin llega a pulsarlo; el backend vuelve a comprobarlo.
+    const adminDialog = initAdminDialog();
+    dom.adminButton.addEventListener('click', () => adminDialog.open());
+
+    /* Ir a la lista de otra cuenta, desde el menú de usuario. El `datalist`
+       sugiere mientras se escribe, pero basta con el nombre y Enter: si no
+       existe, el backend responde 404 y la pantalla vuelve a la propia. */
+    const gotoUser = (value) => {
+        const target = String(value || '').trim();
+        if (!target) return;
+        location.href = target.toLowerCase() === username.toLowerCase()
+            ? 'dashboard.html'
+            : `dashboard.html?user=${encodeURIComponent(target)}`;
+    };
+
+    dom.viewForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        gotoUser(dom.viewInput.value);
+    });
+
+    const suggestUsers = debounce(async () => {
+        const term = dom.viewInput.value.trim();
+        if (!term) {
+            dom.viewSuggestions.replaceChildren();
+            return;
+        }
+        try {
+            const { users } = await ApiClient.searchUsers(term);
+            dom.viewSuggestions.replaceChildren(...users.map((u) => el('option', { value: u.username })));
+        } catch {
+            /* Sin red la sugerencia se queda vacía; el envío por Enter sigue funcionando. */
+        }
+    }, 250);
+
+    dom.viewInput.addEventListener('input', suggestUsers);
+
     // Al salir ya no va a haber quien revoke los object URLs: se liberan ahora
     // para no dejar los bytes de las imagenes en memoria.
-    window.addEventListener('pagehide', releaseAllImageUrls);
+    window.addEventListener('pagehide', () => {
+        releaseViewImageUrls();
+        releaseAllImageUrls();
+    });
 
     dom.logout.addEventListener('click', () => {
+        releaseViewImageUrls();
         releaseAllImageUrls();
         ApiClient.logout();
         location.href = 'login.html';
@@ -1190,7 +1595,8 @@ function bindEvents() {
     watchConnection({
         onChange: (online) => {
             setOffline(!online);
-            if (online) syncQueue();
+            // La cola es de la sesión; en lista ajena no hay nada que volcar.
+            if (online && isOwnList) syncQueue();
         },
     });
 }
@@ -1201,6 +1607,32 @@ function boot() {
     // Los iconos del HTML estático se sustituyen antes de que se pinten los
     // datos, para que la cabecera no cambie de aspecto al cargar la lista.
     hydrateIcons();
+
+    if (!isOwnList) {
+        // Modo solo lectura: se oculta todo lo que escriba en la lista ajena.
+        // Los botones de las tarjetas ya no salen por `actionButtons`, pero el
+        // panel de alta, exportar y buscar animes nuevos también sobran.
+        dom.addPanel.hidden = true;
+        dom.addBodyInner.inert = true;
+        dom.export.hidden = true;
+        dom.openSearch.hidden = true;
+        dom.emptyAction.hidden = true;
+        dom.listTitleLabel.textContent = `Lista de ${viewUser}`;
+        dom.statTotalLabel.textContent = 'En su lista';
+        dom.statsSection.setAttribute('aria-label', `Resumen de la lista de ${viewUser}`);
+        dom.viewBanner.hidden = false;
+        dom.viewBannerName.textContent = `@${viewUser}`;
+
+        // Banner y fondo de la cuenta visitada. El perfil llega en paralelo a
+        // la lista, y el que tarde no debe retrasar el resto del arranque.
+        ApiClient.getUser(viewUser)
+            .then(({ profile }) => {
+                state.viewProfile = profile;
+                return renderUser();
+            })
+            .then(renderViewBanner)
+            .catch(() => { /* si la cuenta no existe, `load` ya lo dirá con su 404 */ });
+    }
 
 // Sin await a proposito: el resto de la interfaz no debe esperar a que
     // lleguen los bytes de las imagenes del perfil.
@@ -1224,8 +1656,11 @@ function boot() {
     dom.filterText.value = state.textFilter;
     resetCover();
     // El panel arranca plegado salvo que se guardara abierto. Sin `focus`, que
-    // robaría el foco a la página recién cargada.
-    setAddPanelOpen(Settings.get('addPanelOpen') === true, { focus: false });
+    // robaría el foco a la página recién cargada. En lista ajena ni siquiera
+    // se decide: el panel está oculto y el estado guardado no se toca.
+    if (isOwnList) {
+        setAddPanelOpen(Settings.get('addPanelOpen') === true, { focus: false });
+    }
 
     bindEvents();
 

@@ -14,7 +14,7 @@
 
 import { ApiClient, ApiError } from './api.js';
 import { DataRepository } from './data_repository.js';
-import { confirmDialog, el, toast } from './ui.js';
+import { confirmDialog, el, toast, setStatus } from './ui.js';
 
 const TARGETS = {
     avatar: { width: 256, height: 256, label: 'Avatar', maxInputBytes: 8 * 1024 * 1024 },
@@ -49,13 +49,6 @@ const DISPLAY_NAME_MAX = 50;
 
 const HTTP_URL = /^https?:\/\//i;
 
-/** Escribe el texto y la clase de estado de una vez: siempre van juntos. */
-function setStatus(node, text, kind) {
-    if (!node) return;
-    node.textContent = text;
-    node.className = kind ? `form-status is-${kind}` : 'form-status';
-}
-
 /* ------------------------------------------------------------------ */
 /* Object URLs: los bytes se piden solo cuando se pintan               */
 /* ------------------------------------------------------------------ */
@@ -64,12 +57,23 @@ function setStatus(node, text, kind) {
 // quedarían colgando al cambiar de foto o de usuario.
 const urls = new Map();
 
+/* Petición en vuelo por tipo: dos pintadas concurrentes (arranque + refresco
+   del perfil) solían pedir el mismo blob dos veces y la segunda `urls.set`
+   tapaba a la primera, que nunca se revocaba. */
+const inflight = new Map();
+
+/* Contador por tipo: `releaseUrl` lo sube. Si una petición termina tras un
+   release, su blob ya es el antiguo y no debe guardarse en caché (se vería
+   la foto vieja hasta recargar). */
+const generations = new Map();
+
 function releaseUrl(kind) {
     const previous = urls.get(kind);
     if (previous) {
         URL.revokeObjectURL(previous);
         urls.delete(kind);
     }
+    generations.set(kind, (generations.get(kind) || 0) + 1);
 }
 
 /**
@@ -91,16 +95,34 @@ async function imageUrl(kind, profile) {
     }
 
     if (urls.has(kind)) return urls.get(kind);
+    if (inflight.has(kind)) return inflight.get(kind);
 
-    try {
-        const blob = await ApiClient.fetchProfileImage(kind);
-        const url = URL.createObjectURL(blob);
-        urls.set(kind, url);
-        return url;
-    } catch (error) {
-        if (error instanceof ApiError && (error.status === 401 || error.status === 404)) return '';
-        throw error;
-    }
+    const generation = generations.get(kind) || 0;
+    const request = (async () => {
+        try {
+            const blob = await ApiClient.fetchProfileImage(kind);
+            const url = URL.createObjectURL(blob);
+
+            if ((generations.get(kind) || 0) !== generation) {
+                // Se quitó o cambió la foto mientras se descargaba: estos bytes
+                // ya no son los que se quieren ver. No se cachea, y la siguiente
+                // pintada (encadenada tras esta) pedirá los nuevos.
+                URL.revokeObjectURL(url);
+                return '';
+            }
+
+            urls.set(kind, url);
+            return url;
+        } catch (error) {
+            if (error instanceof ApiError && (error.status === 401 || error.status === 404)) return '';
+            throw error;
+        } finally {
+            inflight.delete(kind);
+        }
+    })();
+
+    inflight.set(kind, request);
+    return request;
 }
 
 export function releaseAllImageUrls() {
@@ -286,6 +308,10 @@ export function initProfileDialog({ paint }) {
         dom.bannerLabel.classList.add('is-disabled');
         dom.backgroundLabel.classList.add('is-disabled');
         dom.submit.disabled = true;
+        dom.passwordCurrent.disabled = true;
+        dom.passwordNew.disabled = true;
+        dom.passwordRepeat.disabled = true;
+        dom.passwordSave.disabled = true;
     };
 
     /** Lo contrario de `lockForm`. `fatal` deja el formulario cerrado del todo. */
@@ -302,6 +328,10 @@ export function initProfileDialog({ paint }) {
         dom.bannerLabel.classList.toggle('is-disabled', fatal);
         dom.backgroundLabel.classList.toggle('is-disabled', fatal);
         dom.submit.disabled = fatal;
+        dom.passwordCurrent.disabled = fatal;
+        dom.passwordNew.disabled = fatal;
+        dom.passwordRepeat.disabled = fatal;
+        dom.passwordSave.disabled = fatal;
     };
 
     /**
@@ -531,7 +561,9 @@ export function initProfileDialog({ paint }) {
             let queued = false;
             if (Object.keys(fields).length) {
                 const saved = await DataRepository.saveProfile(fields, username);
-                updated = saved.profile || { ...current, ...fields };
+                // `saved.profile` puede ser `null` cuando la operación se encola
+                // sin conexión: no se pierde el resto de los flags del perfil.
+                updated = saved.profile ? { ...current, ...saved.profile } : { ...current, ...fields };
                 queued = saved.queued;
             }
 
@@ -565,6 +597,7 @@ export function initProfileDialog({ paint }) {
     });
 
     dom.open.addEventListener('click', async () => {
+        if (dom.dialog.open) return;
         loadError = null;
         try {
             profile = await ApiClient.getProfile();

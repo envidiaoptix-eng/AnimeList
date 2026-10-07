@@ -13,6 +13,7 @@ from flask import Flask, abort, jsonify, send_from_directory
 from flask_cors import CORS
 
 from config import ALLOWED_ORIGINS, DEBUG, MAX_UPLOAD_BYTES
+from routes_admin import bp as admin_bp
 from routes_anime import bp as anime_bp
 from routes_auth import bp as auth_bp
 
@@ -33,6 +34,7 @@ def create_app():
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(anime_bp)
+    app.register_blueprint(admin_bp)
 
     # El frontend también se sirve desde aquí, así basta con arrancar el backend.
     # send_from_directory impide salir de Frontend/ (path traversal).

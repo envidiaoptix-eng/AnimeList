@@ -27,6 +27,13 @@ export function el(tag, attrs = {}, ...children) {
     return node;
 }
 
+/** Escribe el texto y la clase de estado de una vez: siempre van juntos. */
+export function setStatus(node, text, kind) {
+    if (!node) return;
+    node.textContent = text;
+    node.className = kind ? `form-status is-${kind}` : 'form-status';
+}
+
 function toastHost() {
     let host = document.getElementById('toasts');
     if (!host) {

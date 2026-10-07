@@ -86,7 +86,11 @@ check('el velo se tiñe con --bg y no con negro', 'color-mix(in srgb, var(--bg)'
 
 print('dashboard.js engancha el fondo')
 dash = leer(FRONTEND / 'dashboard.js')
-check('renderUser llama a paintPageBackground', 'await paintPageBackground(profile);' in dash)
+# En lista ajena el perfil pintado es el de la cuenta visitada, así que la
+# llamada es con `pageProfile`; con `profile` (la sesion) se pintaria el fondo
+# propio encima del banner ajeno.
+check('renderUser llama a paintPageBackground(pageProfile)',
+      'await paintPageBackground(pageProfile);' in dash)
 check('quita la clase cuando no hay url', "classList.remove('has-page-bg')" in dash)
 check('quita la variable cuando no hay url', "removeProperty('--page-bg')" in dash)
 check('escapa comillas en la url del css', "replace(/[\\\\\"]/g" in dash)
@@ -122,6 +126,39 @@ codigo_auth = '\n'.join(
 check('el blob de perfil no se cachea en el navegador',
       "'Cache-Control': 'no-store'" in codigo_auth and 'max-age' not in codigo_auth,
       'vuelve max-age' if 'max-age' in codigo_auth else 'falta no-store')
+
+print('lista ajena: modo solo lectura')
+# `dashboard.html?user=X` pinta la lista de otra cuenta. Cualquiera de estos
+# cabos sueltos deja botones de edicion en lista ajena, datos del visitante en
+# la cola offline o el banner sin anclar.
+check('dashboard.html tiene la banda #view-banner', 'view-banner' in ids_html)
+check('dashboard.html tiene el buscador en el menu', 'view-user-form' in ids_html)
+check('dashboard.html tiene el datalist de sugerencias', 'view-user-suggestions' in ids_html)
+check('dashboard.js deriva viewUser de la URL', 'const viewUser = queryUser || username;' in dash)
+check('dashboard.js comprueba isOwnList', 'const isOwnList = viewUser === username;' in dash)
+check('la lista se pide al usuario visitado, no siempre al de sesion',
+      'DataRepository.getAnimes(viewUser)' in dash)
+check('un 404 de cuenta ajena vuelve a la lista propia',
+      "error?.status === 404" in dash and "location.replace('dashboard.html')" in dash)
+check('el panel de alta se oculta en lista ajena', 'dom.addPanel.hidden = true;' in dash)
+check('no hay boton de editar ni borrar en lista ajena', 'if (!isOwnList) return [];' in dash)
+check('la cola offline no se volca ni se encola en lista ajena',
+      'if (online && isOwnList) syncQueue();' in dash
+      and 'if (isOwnList) await syncQueue();' in dash)
+check('las imagenes de otra cuenta se revocan al salir', 'releaseViewImageUrls();' in dash)
+check('dashboard.css define .view-banner', '.view-banner {' in dash_css)
+comp = leer(CSS / 'components.css')
+check('components.css define .dropdown__form', '.dropdown__form' in comp)
+check('api.js pide la imagen de perfil de otra cuenta con ?user=',
+      'username ? `?user=${encodeURIComponent(username)}`' in leer(FRONTEND / 'api.js'))
+
+print('administracion: el censo')
+check('dashboard.html tiene el dialogo #admin-dialog', 'admin-dialog' in ids_html)
+check('el boton de admin solo se muestra con el rol de la sesion',
+      'dom.adminButton.hidden = !Boolean(session.profile?.is_admin);' in dash)
+check('el boton del menu abre el censo', 'dom.adminButton.addEventListener' in dash)
+check('la contrasena respeta el minimo del backend', "minlength: '6'" in dash)
+check('dashboard.css da scroll al censo', '.admin-users {' in dash_css)
 
 print('codigo muerto y trampas conocidas')
 todo_js = '\n'.join(leer(p) for p in FRONTEND.glob('*.js'))

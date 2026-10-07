@@ -35,28 +35,52 @@ export class ApiError extends Error {
     }
 }
 
-function readJSON(key, fallback) {
-    try {
-        const raw = localStorage.getItem(key);
-        return raw === null ? fallback : JSON.parse(raw);
-    } catch (error) {
-        return fallback;
-    }
-}
-
-function writeJSON(key, value) {
-    try {
-        localStorage.setItem(key, JSON.stringify(value));
-    } catch (error) {
-        console.warn('No se pudo guardar en localStorage:', error);
-    }
-}
+import { readJSON, writeJSON } from './storage.js';
 
 function readSession() {
     const session = readJSON(SESSION_KEY, null);
     if (!session || !session.token || !session.username) return null;
     if (session.expiresAt && session.expiresAt < Date.now()) return null;
     return session;
+}
+
+/**
+ * `fetch` con tope de tiempo.
+ *
+ * Sin esto, un servidor colgado dejaba al usuario mirando «Guardando…» para
+ * siempre: `fetch` no tiene timeout y el botón solo se reactiva en el `finally`
+ * del llamador. Un tiempo agotado se traduce en `ApiError` con status 0, que
+ * es exactamente lo que la capa de datos interpreta como «sin conexión» y
+ * encola.
+ *
+ * Si el llamador aborta su propia señal (la búsqueda con `AbortController`),
+ * se respeta el `AbortError` original: para él sí hay un significado concreto.
+ */
+const REQUEST_TIMEOUT_MS = 15000;
+
+async function timedFetch(url, { signal, ...options } = {}) {
+    const controller = new AbortController();
+    let timedOut = false;
+
+    const timer = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+    }, REQUEST_TIMEOUT_MS);
+    const relayAbort = () => controller.abort();
+    if (signal) {
+        if (signal.aborted) controller.abort();
+        else signal.addEventListener('abort', relayAbort, { once: true });
+    }
+
+    try {
+        return await fetch(url, { ...options, signal: controller.signal });
+    } catch (error) {
+        if (timedOut) throw new ApiError('El servidor no responde.', 0);
+        throw error;
+    } finally {
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', relayAbort);
+    }
 }
 
 export const ApiClient = {
@@ -115,13 +139,14 @@ export const ApiClient = {
 
         let response;
         try {
-            response = await fetch(`${this.baseUrl()}${path}`, {
+            response = await timedFetch(`${this.baseUrl()}${path}`, {
                 method,
                 headers,
                 body: body === null ? undefined : JSON.stringify(body),
                 signal,
             });
         } catch (error) {
+            if (error instanceof ApiError) throw error;
             if (error.name === 'AbortError') throw error;
             throw new ApiError('No se pudo conectar con el servidor.', 0);
         }
@@ -138,8 +163,10 @@ export const ApiClient = {
 
         if (response.status === 401 && auth && !keepSessionOn401) {
             this.clearSession();
-            if (!location.pathname.endsWith('index.html')) {
-                location.href = 'index.html';
+            // Al acceso, no al registro: una sesión caducada no es un motivo
+            // para crear cuenta. `index.html` es la pantalla de alta.
+            if (!location.pathname.endsWith('login.html')) {
+                location.href = 'login.html';
             }
             throw new ApiError(payload?.error || 'Tu sesión ha caducado.', 401, payload);
         }
@@ -194,10 +221,14 @@ export const ApiClient = {
     /**
      * Los bytes van aparte de `/api/me` para no arrastrar el base64 en cada
      * carga; por eso se piden como Blob y no como JSON.
+     *
+     * Con `username` pide la imagen de otra cuenta (lista ajena); sin él, la
+     * propia, que es el comportamiento de siempre.
      */
-    async fetchProfileImage(kind) {
+    async fetchProfileImage(kind, username = null) {
         const session = readSession();
-        const response = await fetch(`${this.baseUrl()}/profile/image/${encodeURIComponent(kind)}`, {
+        const query = username ? `?user=${encodeURIComponent(username)}` : '';
+        const response = await fetch(`${this.baseUrl()}/profile/image/${encodeURIComponent(kind)}${query}`, {
             headers: session?.token ? { Authorization: `Bearer ${session.token}` } : {},
         });
         if (!response.ok) {
@@ -212,6 +243,18 @@ export const ApiClient = {
             body: { current_password: currentPassword, new_password: newPassword },
             keepSessionOn401: true,
         });
+    },
+
+    /** Buscador de cuentas del menú de usuario (para saltar a su lista). */
+    searchUsers(term, { signal = null } = {}) {
+        const params = new URLSearchParams();
+        if (term) params.set('q', term);
+        return this.request(`/users?${params}`, { signal });
+    },
+
+    /** Perfil público de otra cuenta, para pintar la cabecera de su lista. */
+    getUser(username) {
+        return this.request(`/users/${encodeURIComponent(username)}`);
     },
 
     getAnimes(username) {
@@ -247,5 +290,29 @@ export const ApiClient = {
 
     getStats() {
         return this.request('/stats');
+    },
+
+    /* ---- Administración (solo con rol admin; el backend vuelve a comprobar) ---- */
+
+    adminListUsers() {
+        return this.request('/admin/users');
+    },
+
+    adminDeleteUser(username) {
+        return this.request(`/admin/users/${encodeURIComponent(username)}`, { method: 'DELETE' });
+    },
+
+    adminResetPassword(username, password) {
+        return this.request(`/admin/users/${encodeURIComponent(username)}/password`, {
+            method: 'POST',
+            body: { password },
+        });
+    },
+
+    adminSetRole(username, role) {
+        return this.request(`/admin/users/${encodeURIComponent(username)}/role`, {
+            method: 'PUT',
+            body: { role },
+        });
     },
 };

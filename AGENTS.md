@@ -21,18 +21,22 @@ Un módulo por responsabilidad, todos importándose entre sí por ruta de módul
 | Archivo | Responsabilidad |
 |---|---|
 | `app.py` | fábrica de la app, CORS restringido, blueprints, servido del frontend, arranque |
-| `config.py` | rutas, clave de firma, timeouts, límites de validación, variables de Firebase |
-| `store.py` | conmutación JSON/Firestore + escritura JSON atómica y migración del formato de usuarios |
+| `config.py` | rutas, clave de firma, timeouts, límites de validación, variables de Firebase, `ADMIN_USERNAMES` |
+| `store.py` | conmutación JSON/Firestore + escritura JSON atómica y migración del formato de usuarios + `is_admin` |
 | `firestore_store.py` | adaptador de Firestore (Admin SDK), import perezoso, escritura por diferencias |
 | `migrate_to_firestore.py` | migración JSON → Firestore, con simulación por defecto |
-| `auth.py` | tokens Bearer HMAC-SHA256, `require_auth` |
+| `auth.py` | tokens Bearer HMAC-SHA256, `require_auth`, `require_admin` |
 | `external.py` | clientes de AniList y Kitsu, caché, reintentos, normalización |
-| `routes_auth.py` | registro, login, perfil, contraseña |
+| `routes_auth.py` | registro, login, perfil, contraseña, búsqueda y perfil público de usuarios |
 | `routes_anime.py` | CRUD de anime, búsqueda, estadísticas |
+| `routes_admin.py` | censo de cuentas, borrar cuenta, resetear contraseña, cambiar rol |
 
 - **Frontend estático:** `GET /` entrega `landing.html` (portada pública) y `GET /<path>` sirve el resto de `Frontend/` con `send_from_directory`, que bloquea el path traversal; `api/*` no pasa por ahí y cae en el 404 JSON. El registro sigue en `index.html` y el panel en `dashboard.html`.
 - **Tokens:** `base64url(payload).base64url(hmac)` con `{"u": usuario, "exp": ts}`, 7 días de validez. La clave vive en `Backend/secret.key` (generada sola, gitignored), salvo que exista `ANIMELIST_SECRET_KEY`, que siempre manda.
-- **Propiedad:** todo el CRUD exige `@require_auth`, y cada anime se valida contra `anime['user']` contra el usuario del token. 401 sin token, 403 si el recurso es de otro.
+- **Propiedad:** todo el CRUD exige `@require_auth`, y cada anime se valida contra `anime['user']` contra el usuario del token. 401 sin token, 403 si el recurso es de otro. El admin lo salta: `_load_owned` deja pasar a `store.is_admin`, que es quien hace posible moderar listas ajenas sin duplicar la lógica del CRUD.
+- **Listas ajenas:** `GET /api/anime?user=X` devuelve la lista de cualquier cuenta (404 si no existe) y `GET /api/profile/image/<kind>?user=X` su imagen; las dos siguen exigiendo token. Ver una lista no da poderes sobre ella: el PUT/DELETE del dueño siguen cerrados para el visitante.
+- **Roles:** no viajan en el token. `store.is_admin(usuario)` = campo `"role": "admin"` en el perfil **∪** la variable `ANIMELIST_ADMIN` (coma-separada, case-insensitive, vive en `config.ADMIN_USERNAMES`). `auth.require_admin` lo comprueba por request (401 sin token, 403 sin rol) y `/api/me` lo expone como `is_admin` para que la UI sepa qué botones enseñar. Un admin de entorno no se puede revocar desde la app (400): solo quitándolo del entorno.
+- **Guardas del admin:** no borrarse a sí mismo, no quedarse sin ningún admin (borrar ni rebajar al último) y rol con valores `admin`/`user`. Siempre 400 con el motivo, que la UI enseña tal cual.
 - **Escrituras:** `store.write_json` usa fichero temporal + `os.replace`; un JSON corrupto se renombra a `.corrupto-<fecha>` en vez de perderse.
 - **Caché externa:** `_cache_get` devuelve una **copia profunda**. Sin esto, un `pop()` en la capa de rutas mutilaba la entrada y la segunda búsqueda del mismo término devolvía 500.
 
@@ -82,12 +86,19 @@ Un módulo por responsabilidad, todos importándose entre sí por ruta de módul
 | PUT | `/api/profile/image` | token |
 | GET | `/api/profile/image/<kind>` | token |
 | POST | `/api/password` | token |
+| GET | `/api/users?q=` | token |
+| GET | `/api/users/<target>` | token |
 | GET | `/api/anime` | token |
+| GET | `/api/anime?user=` | token |
 | POST | `/api/anime` | token |
 | GET | `/api/anime/search` | token |
 | GET/PUT/DELETE | `/api/anime/<id>` | token + propietario |
 | GET | `/api/anime/<id>/external` | token + propietario |
 | GET | `/api/stats` | token |
+| GET | `/api/admin/users` | token + admin |
+| DELETE | `/api/admin/users/<target>` | token + admin |
+| POST | `/api/admin/users/<target>/password` | token + admin |
+| PUT | `/api/admin/users/<target>/role` | token + admin |
 
 ## Frontend
 
@@ -101,7 +112,7 @@ Un módulo por responsabilidad, todos importándose entre sí por ruta de módul
 | `theme.js` | tema claro/oscuro (se aplica en `<head>` para evitar parpadeo) |
 | `search_modal.js` | diálogo de búsqueda con debounce + autocomplete del título |
 | `profile.js` | diálogo de perfil: recorte en canvas y subida de avatar/banner |
-| `dashboard.js` | render de tarjetas, edición, borrado con deshacer, filtros, stats |
+| `dashboard.js` | render de tarjetas, edición, borrado con deshacer, filtros, stats, modo lista ajena y panel de administración |
 | `app.js` | registro e inicio de sesión |
 | `landing.js` | portada: iconos y salto al panel si ya hay sesión |
 
@@ -116,6 +127,8 @@ Un módulo por responsabilidad, todos importándose entre sí por ruta de módul
 - **Avatar de la cabecera:** `#user-avatar` y `#avatar-fallback` son los dos nodos del botón y **solo puede verse uno**. `renderUser()` alterna `dom.avatarFallback.hidden = Boolean(url)`. Antes no se ocultaba nunca, y como `.avatar-btn` es un `grid` de 38px sin `grid-template`, los dos caían en dos filas implícitas de 34px y desbordaban el círculo; la regla `.avatar-btn > .avatar { grid-area: 1 / 1 }` hace de red de seguridad. Con `hidden` no se ve porque `[hidden] { display: none !important; }` gana al grid.
 - **Fondo de página:** `background` es el tercer `IMAGE_KIND` y reutiliza el pipeline entero, así que `IMAGE_FIELDS` es lo único que hubo que extender. `dashboard.js` lo pinta como `--page-bg` en `:root` más una clase `has-page-bg`; la regla del velo vive en `dashboard.css` y **no** en `base.css` a propósito, porque la portada, el acceso y el login comparten `base.css` y no deben heredarlo. En `background-image` la primera capa es la de encima, así que el velo va primero y la foto al fondo del todo. El velo se tiñe con `var(--bg)`, no con negro: en el tema oscuro sale un oscurecido y en el claro un aclarado, que es lo que mantiene el texto legible sobre cualquier foto.
 - **Offline:** sin red, las escrituras se guardan en la caché y entran en una cola que se reintenta en orden al recuperar la conexión (`DataRepository.flushQueue`).
+- **Lista ajena (`dashboard.html?user=X`):** `dashboard.js` deriva `viewUser`/`isOwnList` de la URL. En modo ajeno se ocultan el panel de alta, exportar, buscar y los botones de cada tarjeta (`actionButtons` devuelve `[]`), cambian los textos de estado y vacío, y la cola offline no se toca (`syncQueue` solo con `isOwnList`). Banner y fondo se pintan con el perfil de la cuenta visitada, que llega de `GET /api/users/<target>` en paralelo a la lista; sus imágenes usan `viewImageUrl` con un `Map` propio (`viewImageUrls`), **no** la caché de `profile.js`, que está indexada solo por `kind` y mezclaría fotos de dos cuentas. Un 404 de usuario hace toast + `location.replace('dashboard.html')`: `data_repository.js` relanza el 404 igual que el 401 para no servir la caché propia como si fuera la lista ajena. El buscador de cuentas vive en el menú de usuario (`#view-user-form`, con `datalist` y `ApiClient.searchUsers`); basta con el nombre y Enter.
+- **Administración:** el botón `#btn-admin` del menú solo se muestra si `session.profile.is_admin` (lo decide `renderUser`; el rol viene de `/api/me`, no del token) y abre `#admin-dialog` (`initAdminDialog`): censo de `GET /api/admin/users` filtrado en cliente, con «Ver lista», resetear contraseña —formulario bajo la fila, nunca un segundo modal apilado—, promover/revocar y borrar. Toda operación pasa por `confirmDialog` y sus errores (400 de guardas, 403 de rol caducado) salen como toast con el mensaje del backend. Las filas se construyen con `el()` y se hidratan con `hydrateIcons(list)`.
 - Todo el contenido dinámico se inserta con `text`/`textContent`, nunca con `innerHTML`. `el()` no ofrece ninguna rama de HTML: `attrs` admite `class`, `text`, `dataset` y `on*`, y nada más. La rama existió y sobraba —no la usaba ni un `callSite`—, pero contradecía esta regla y era un agujero esperando a que alguien lo empujara.
 
 ## Convenciones
@@ -128,8 +141,8 @@ Un módulo por responsabilidad, todos importándose entre sí por ruta de módul
 
 ## Verificación
 
-Antes de tocar nada, y siempre al terminar, los dos tests de `Backend/tests/`.
-Los dos salen con código 1 si algo falla, así que valen como paso de CI:
+Antes de tocar nada, y siempre al terminar, los tres tests de `Backend/tests/`.
+Los tres salen con código 1 si algo falla, así que valen como paso de CI:
 
 ```powershell
 # contratos entre JS y HTML: ids, selectores, iconos e invariantes
@@ -137,6 +150,9 @@ Backend\env\Scripts\python.exe Backend\tests\check_ids.py
 
 # API de perfil contra la app real (create_app().test_client())
 Backend\env\Scripts\python.exe Backend\tests\smoke_profile.py
+
+# listas ajenas, buscador de cuentas y todo el área admin
+Backend\env\Scripts\python.exe Backend\tests\smoke_admin.py
 ```
 
 `check_ids.py` cruza cada `getElementById` y cada `querySelector` contra el
@@ -144,12 +160,18 @@ HTML y el CSS, cada `data-icon` contra el catálogo de `icons.js`, y comprueba
 invariantes que ya han roto una vez (que el avatar y la inicial no se vean
 juntos, que `imageUrl` use `${kind}_url`, que el fondo se cargue al abrir el
 diálogo, que no quede Firebase en el cliente, que `el()` no asigne
-`innerHTML`). Merece la pena **añadir la línea cuando se toca algo de eso**: un
+`innerHTML`, que la lista ajena no deje botones de edición ni meta nada en la
+cola offline). Merece la pena **añadir la línea cuando se toca algo de eso**: un
 `check(...)` nuevo es más barato que el bug que evita.
 
 `smoke_profile.py` cubre 401 sin token, los tres tipos de imagen, magic bytes
 JPEG y PNG, topes por tipo, URLs externas peligrosas, aislamiento entre
 usuarios, quitar imagen y que el perfil nunca devuelva base64.
+
+`smoke_admin.py` cubre las listas ajenas (`?user=`), el buscador de cuentas,
+la imagen de perfil de otra cuenta, el rol admin (por `role` y por
+`ANIMELIST_ADMIN`), sus guardas, el reseteo de contraseñas y el borrado de
+cuenta con su lista.
 
 Ojo: `smoke_profile.py` **redirige `config.USERS_FILE` y `config.ANIME_FILE` a
 un temporal antes de importar la app**, así que no toca `users.json` ni

@@ -16,11 +16,7 @@ from flask import jsonify, request
 from config import SECRET_KEY, TOKEN_TTL_SECONDS
 
 
-class AuthError(Exception):
-    def __init__(self, message, status):
-        super().__init__(message)
-        self.message = message
-        self.status = status
+
 
 
 def _b64encode(raw):
@@ -89,6 +85,27 @@ def require_auth(view):
         username = current_username()
         if not username:
             return jsonify({'error': 'No autenticado. Vuelve a iniciar sesión.'}), 401
+        return view(username, *args, **kwargs)
+
+    return wrapper
+
+
+def require_admin(view):
+    """Como `require_auth`, pero exige privilegios de administración.
+
+    Va después de `@bp...` y solo él: ya valida el token y el rol, así que no
+    hace falta apilar `require_auth`. El rol se comprueba contra el almacén en
+    cada llamada (ver `store.is_admin`), nunca contra el token.
+    """
+
+    @wraps(view)
+    def wrapper(*args, **kwargs):
+        username = current_username()
+        if not username:
+            return jsonify({'error': 'No autenticado. Vuelve a iniciar sesión.'}), 401
+        from store import is_admin
+        if not is_admin(username):
+            return jsonify({'error': 'Se requieren permisos de administrador.'}), 403
         return view(username, *args, **kwargs)
 
     return wrapper

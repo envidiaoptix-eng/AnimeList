@@ -230,6 +230,46 @@ def update_profile_image(username):
     })
 
 
+@bp.get('/users')
+@require_auth
+def list_users(username):
+    """Buscador de cuentas para ver listas ajenas.
+
+    Solo sale el perfil público (nunca `password_hash` ni los blobs): es lo
+    necesario para pintar una fila de resultados y saltar a su lista.
+    """
+    term = (request.args.get('q') or '').strip().lower()
+    users = load_users()
+    counts = {}
+    for anime in load_anime():
+        owner = anime.get('user')
+        counts[owner] = counts.get(owner, 0) + 1
+
+    matches = [
+        public_profile(name, profile)
+        for name, profile in users.items()
+        if not term or term in name.lower() or term in (profile.get('display_name') or '').lower()
+    ]
+    matches.sort(key=lambda p: p['username'].lower())
+    for profile in matches:
+        profile['anime_count'] = counts.get(profile['username'], 0)
+
+    return jsonify({'users': matches[:50], 'total': len(matches)})
+
+
+@bp.get('/users/<target>')
+@require_auth
+def get_user(username, target):
+    """Perfil público de una cuenta ajena, para la cabecera de su lista."""
+    profile = load_users().get(target)
+    if not profile:
+        return jsonify({'error': 'Ese usuario no existe.'}), 404
+
+    payload = public_profile(target, profile)
+    payload['anime_count'] = sum(1 for a in load_anime() if a.get('user') == target)
+    return jsonify({'profile': payload})
+
+
 @bp.get('/profile/image/<kind>')
 @require_auth
 def get_profile_image(username, kind):
@@ -238,11 +278,15 @@ def get_profile_image(username, kind):
     Las imágenes no van dentro de `/api/me`: un banner son ~120 KB en base64 que
     se descargarían en cada carga y ocuparían la caché de localStorage. Aquí se
     piden solo cuando hacen falta, y el cliente crea un object URL.
+
+    `?user=` permite pedir la de otra cuenta (avatar/banner/fondo de la lista
+    ajena). Sigue exigiendo token: no hay nada público en la app.
     """
     if kind not in IMAGE_KINDS:
         return jsonify({'error': 'Esa imagen no existe.'}), 404
 
-    profile = load_users().get(username)
+    target = (request.args.get('user') or '').strip() or username
+    profile = load_users().get(target)
     if not profile:
         return jsonify({'error': 'La cuenta ya no existe.'}), 404
 

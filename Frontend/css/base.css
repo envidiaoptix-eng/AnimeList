@@ -338,7 +338,7 @@ label, .field__label {
 .form-status.is-error { color: var(--danger); }
 .form-status.is-success { color: var(--success); }
 
-/* ---------- Interruptor ---------- */
+/* ---------- Interruptor y cargador ---------- */
 .switch {
     display: inline-flex;
     align-items: center;
@@ -357,7 +357,6 @@ label, .field__label {
     cursor: pointer;
 }
 
-/* ---------- Cargador de un boton ---------- */
 .spinner {
     width: 16px;
     height: 16px;
