@@ -16,6 +16,7 @@ from config import ALLOWED_ORIGINS, DEBUG, MAX_UPLOAD_BYTES
 from routes_admin import bp as admin_bp
 from routes_anime import bp as anime_bp
 from routes_auth import bp as auth_bp
+from routes_social import bp as social_bp
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / 'Frontend'
 
@@ -34,6 +35,7 @@ def create_app():
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(anime_bp)
+    app.register_blueprint(social_bp)
     app.register_blueprint(admin_bp)
 
     # El frontend también se sirve desde aquí, así basta con arrancar el backend.

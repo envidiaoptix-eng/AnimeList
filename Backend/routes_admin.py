@@ -12,10 +12,12 @@ from werkzeug.security import generate_password_hash
 from auth import require_admin
 from config import ADMIN_USERNAMES
 from routes_auth import _password_error
+from routes_social import friendship_index, friendship_state, purge_user_social
 from store import (
     find_anime,
     is_admin,
     load_anime,
+    load_friends,
     load_users,
     public_profile,
     save_anime,
@@ -46,11 +48,14 @@ def list_users(username):
     for anime in load_anime():
         owner = anime.get('user')
         counts[owner] = counts.get(owner, 0) + 1
+    social = load_friends()
+    index = friendship_index(social)
 
     listing = []
     for name in sorted(users, key=str.lower):
         profile = public_profile(name, users[name])
         profile['anime_count'] = counts.get(name, 0)
+        profile['friendship'] = friendship_state(social, username, name, index)
         listing.append(profile)
 
     return jsonify({'users': listing, 'admins': _admin_count(users)})
@@ -82,7 +87,10 @@ def delete_user(username, target):
     if removed:
         save_anime([a for a in animes if a.get('user') != target])
 
-    return jsonify({'message': f'Cuenta {target} eliminada.', 'animes_deleted': removed})
+    social = purge_user_social(target)
+    return jsonify({'message': f'Cuenta {target} eliminada.',
+                    'animes_deleted': removed,
+                    **social})
 
 
 @bp.post('/users/<target>/password')

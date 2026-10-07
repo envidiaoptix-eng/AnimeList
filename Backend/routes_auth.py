@@ -20,7 +20,8 @@ from config import (
     USERNAME_MAX,
     USERNAME_MIN,
 )
-from store import load_anime, load_users, now_iso, public_profile, save_users
+from routes_social import friendship_index, friendship_state
+from store import load_anime, load_friends, load_users, now_iso, public_profile, save_users
 
 bp = Blueprint('auth', __name__, url_prefix='/api')
 
@@ -244,6 +245,8 @@ def list_users(username):
     for anime in load_anime():
         owner = anime.get('user')
         counts[owner] = counts.get(owner, 0) + 1
+    social = load_friends()
+    index = friendship_index(social)
 
     matches = [
         public_profile(name, profile)
@@ -253,6 +256,8 @@ def list_users(username):
     matches.sort(key=lambda p: p['username'].lower())
     for profile in matches:
         profile['anime_count'] = counts.get(profile['username'], 0)
+        profile['friendship'] = friendship_state(social, username,
+                                                 profile['username'], index)
 
     return jsonify({'users': matches[:50], 'total': len(matches)})
 
@@ -267,6 +272,7 @@ def get_user(username, target):
 
     payload = public_profile(target, profile)
     payload['anime_count'] = sum(1 for a in load_anime() if a.get('user') == target)
+    payload['friendship'] = friendship_state(load_friends(), username, target)
     return jsonify({'profile': payload})
 
 

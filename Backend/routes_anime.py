@@ -16,6 +16,7 @@ from config import (
     TITLE_MAX,
     VALID_STATUSES,
 )
+from routes_social import delete_comments_for_anime
 from store import (
     ANIME_FIELDS,
     find_anime,
@@ -346,7 +347,10 @@ def delete_anime(username, anime_id):
 
     animes.remove(anime)
     save_anime(animes)
-    return jsonify({'message': 'Anime eliminado.', 'anime': anime})
+    # Cascada: un comentario sobre una ficha borrada no apunta a nada ya.
+    removed_comments = delete_comments_for_anime(anime_id)
+    return jsonify({'message': 'Anime eliminado.', 'anime': anime,
+                    'comments_deleted': removed_comments})
 
 
 @bp.get('/anime/<anime_id>/external')
